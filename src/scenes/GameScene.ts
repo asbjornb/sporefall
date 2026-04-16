@@ -39,15 +39,15 @@ interface SlotSpec {
 }
 
 function slotPositions(side: Side): SlotSpec[] {
-  // 2x2 grid just inward from each sclerotium.
+  // 3x3 grid just inward from each sclerotium.
   const baseX = side === "left" ? 180 : 1100;
   const dx = side === "left" ? 80 : -80;
   const positions: SlotSpec[] = [];
-  for (let row = 0; row < 2; row++) {
-    for (let col = 0; col < 2; col++) {
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
       positions.push({
         x: baseX + dx * col,
-        y: LOG_BOTTOM + 55 + row * 70,
+        y: LOG_BOTTOM + 30 + row * 70,
       });
     }
   }
@@ -282,11 +282,11 @@ export class GameScene extends Phaser.Scene {
 
   private createBuildButtons(): void {
     const btnW = 280;
-    const btnH = 130;
+    const btnH = 110;
     const gap = 24;
     const total = btnW * 4 + gap * 3;
     const startX = (WIDTH - total) / 2;
-    const y = 560;
+    const y = 595;
 
     KINDS.forEach((kind, i) => {
       const x = startX + i * (btnW + gap);
