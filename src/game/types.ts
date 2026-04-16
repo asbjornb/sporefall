@@ -6,7 +6,11 @@ export type StructureKind =
   | "fruiting"
   | "decomposer";
 
-export type StructureStatus = "growing" | "active" | "mutating";
+export type StructureStatus =
+  | "growing"
+  | "active"
+  | "mutating"
+  | "disabled";
 
 export interface Structure {
   id: number;
@@ -15,6 +19,18 @@ export interface Structure {
   status: StructureStatus;
   /** Seconds remaining until the current lifecycle stage completes. */
   timer: number;
+  /** Disable meter, 0..DISABLE_THRESHOLD. Fills under attack, decays otherwise. */
+  disableMeter: number;
+  /** Seconds remaining while status === "disabled". 0 otherwise. */
+  disableTimer: number;
+  /** Fruiting only. Surge charge progress, 0..SURGE_THRESHOLD. */
+  surgeCharge?: number;
+  /** Fruiting only. Seconds remaining in active burst (0 when not bursting). */
+  surgeTimer?: number;
+  /** Fruiting only. Id of the structure the most recent burst hit. Lives while surgeTimer > 0. */
+  surgeTargetId?: number | null;
+  /** Rhizo only. Id of the current target enemy structure, or null. */
+  rhizoTargetId?: number | null;
 }
 
 export interface ColonyState {
