@@ -63,6 +63,13 @@
         text-align: center;
         z-index: 15;
         pointer-events: none;
+        opacity: 0;
+        animation: hintFade 6s ease forwards;
+      }
+      @keyframes hintFade {
+        0% { opacity: 0; }
+        10%, 70% { opacity: 1; }
+        100% { opacity: 0; visibility: hidden; }
       }
       @media (pointer: coarse) {
         #mobile-hint {
@@ -96,12 +103,7 @@
     <div id="game"></div>
     <button id="fullscreen-btn" type="button" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
     <div id="mobile-hint">Tap ⛶ for fullscreen — plays best in landscape.</div>
-    <div id="rotate">
-      Please rotate your device to landscape.<br />
-      <span style="font-size: 0.9rem; opacity: 0.8"
-        >Tip: tap ⛶ (top right) for fullscreen.</span
-      >
-    </div>
+    <div id="rotate">Please rotate your device to landscape.</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
