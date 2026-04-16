@@ -22,32 +22,62 @@ const game = new Phaser.Game({
 // Expose for debugging in the browser console.
 (window as unknown as { game: Phaser.Game }).game = game;
 
-// On touch devices, try to enter fullscreen and lock landscape on first tap.
-// Browsers only allow this from a user gesture, so we attach a one-shot listener.
-if (window.matchMedia("(pointer: coarse)").matches) {
-  const tryLockLandscape = async (): Promise<void> => {
-    const root = document.documentElement as HTMLElement & {
-      webkitRequestFullscreen?: () => Promise<void>;
-    };
-    try {
-      if (root.requestFullscreen) {
-        await root.requestFullscreen();
-      } else if (root.webkitRequestFullscreen) {
-        await root.webkitRequestFullscreen();
-      }
-    } catch {
-      /* fullscreen denied — continue anyway */
+type FsDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void>;
+};
+type FsElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void>;
+};
+
+const isFullscreen = (): boolean => {
+  const d = document as FsDocument;
+  return !!(d.fullscreenElement || d.webkitFullscreenElement);
+};
+
+const enterFullscreen = async (): Promise<void> => {
+  const root = document.documentElement as FsElement;
+  try {
+    if (root.requestFullscreen) {
+      await root.requestFullscreen();
+    } else if (root.webkitRequestFullscreen) {
+      await root.webkitRequestFullscreen();
     }
-    const orientation = screen.orientation as
-      | (ScreenOrientation & { lock?: (o: string) => Promise<void> })
-      | undefined;
-    try {
-      if (orientation?.lock) {
-        await orientation.lock("landscape");
-      }
-    } catch {
-      /* lock unsupported (iOS Safari) — rotate overlay handles it */
+  } catch {
+    /* fullscreen denied */
+  }
+  const orientation = screen.orientation as
+    | (ScreenOrientation & { lock?: (o: string) => Promise<void> })
+    | undefined;
+  try {
+    if (orientation?.lock) {
+      await orientation.lock("landscape");
     }
-  };
-  window.addEventListener("pointerdown", tryLockLandscape, { once: true });
+  } catch {
+    /* lock unsupported (iOS Safari) — rotate overlay handles it */
+  }
+};
+
+const exitFullscreen = async (): Promise<void> => {
+  const d = document as FsDocument;
+  try {
+    if (d.exitFullscreen) {
+      await d.exitFullscreen();
+    } else if (d.webkitExitFullscreen) {
+      await d.webkitExitFullscreen();
+    }
+  } catch {
+    /* ignore */
+  }
+};
+
+const fsBtn = document.getElementById("fullscreen-btn");
+if (fsBtn) {
+  fsBtn.addEventListener("click", () => {
+    if (isFullscreen()) {
+      void exitFullscreen();
+    } else {
+      void enterFullscreen();
+    }
+  });
 }

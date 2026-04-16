@@ -26,6 +26,53 @@
         width: 100vw;
         height: 100vh;
       }
+      #fullscreen-btn {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(27, 18, 10, 0.55);
+        color: #e8d7b6;
+        border: 1px solid rgba(232, 215, 182, 0.35);
+        border-radius: 6px;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+        z-index: 20;
+      }
+      #fullscreen-btn:hover {
+        background: rgba(27, 18, 10, 0.8);
+      }
+      #mobile-hint {
+        display: none;
+        position: fixed;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(27, 18, 10, 0.7);
+        color: #e8d7b6;
+        border: 1px solid rgba(232, 215, 182, 0.3);
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 0.85rem;
+        text-align: center;
+        z-index: 15;
+        pointer-events: none;
+      }
+      @media (pointer: coarse) {
+        #mobile-hint {
+          display: block;
+        }
+      }
+      :fullscreen #mobile-hint,
+      :-webkit-full-screen #mobile-hint {
+        display: none;
+      }
       #rotate {
         display: none;
         position: fixed;
@@ -47,7 +94,14 @@
   </head>
   <body>
     <div id="game"></div>
-    <div id="rotate">Please rotate your device to landscape.</div>
+    <button id="fullscreen-btn" type="button" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
+    <div id="mobile-hint">Tap ⛶ for fullscreen — plays best in landscape.</div>
+    <div id="rotate">
+      Please rotate your device to landscape.<br />
+      <span style="font-size: 0.9rem; opacity: 0.8"
+        >Tip: tap ⛶ (top right) for fullscreen.</span
+      >
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
