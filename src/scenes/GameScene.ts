@@ -39,12 +39,12 @@ interface SlotSpec {
 }
 
 function slotPositions(side: Side): SlotSpec[] {
-  // 2x2 grid just inward from each sclerotium.
+  // 2x5 grid just inward from each sclerotium.
   const baseX = side === "left" ? 180 : 1100;
   const dx = side === "left" ? 80 : -80;
   const positions: SlotSpec[] = [];
   for (let row = 0; row < 2; row++) {
-    for (let col = 0; col < 2; col++) {
+    for (let col = 0; col < 5; col++) {
       positions.push({
         x: baseX + dx * col,
         y: LOG_BOTTOM + 55 + row * 70,

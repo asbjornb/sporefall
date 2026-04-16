@@ -1,6 +1,6 @@
 import type { StructureKind } from "./types";
 
-export const SLOT_COUNT = 4;
+export const SLOT_COUNT = 10;
 
 export const START_NUTRIENTS = 40;
 export const BASE_INCOME = 2; // nutrients / second
