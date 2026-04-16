@@ -7,10 +7,10 @@ const game = new Phaser.Game({
   parent: "game",
   backgroundColor: "#1b120a",
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: 1280,
-    height: 720,
+    width: window.innerWidth,
+    height: window.innerHeight,
   },
   scene: [BootScene, GameScene],
   render: {
