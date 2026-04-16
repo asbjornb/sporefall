@@ -1,6 +1,14 @@
 import Phaser from "phaser";
 import { SimpleAI } from "../game/ai";
-import { SLOT_COUNT, STRUCTURES } from "../game/config";
+import {
+  DISABLE_DURATION,
+  DISABLE_THRESHOLD,
+  HYPHAE_SMOTHER_RATE,
+  SLOT_COUNT,
+  STRUCTURES,
+  SURGE_THRESHOLD,
+  levelMultiplier,
+} from "../game/config";
 import {
   build,
   canBuild,
@@ -10,7 +18,7 @@ import {
   pressureOf,
   step,
 } from "../game/sim";
-import type { GameState, Side, StructureKind } from "../game/types";
+import type { GameState, Side, Structure, StructureKind } from "../game/types";
 
 const LEFT_TINT = 0x9bb04a;
 const RIGHT_TINT = 0xc46a3a;
@@ -61,6 +69,15 @@ interface Layout {
   buildBtns: BuildBtnRect[];
   pauseBtn: ControlBtnRect;
   restartBtn: ControlBtnRect;
+}
+
+function desaturate(hex: number, amount: number): number {
+  const r = (hex >> 16) & 0xff;
+  const g = (hex >> 8) & 0xff;
+  const b = hex & 0xff;
+  const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+  const mix = (c: number) => Math.round(c + (gray - c) * amount);
+  return (mix(r) << 16) | (mix(g) << 8) | mix(b);
 }
 
 function computeLayout(W: number, H: number): Layout {
@@ -185,6 +202,9 @@ export class GameScene extends Phaser.Scene {
   };
   private slotHit: Phaser.GameObjects.Arc[] = [];
   private selectedSlotIdx: number | null = null;
+  /** Per-slot shake timer for the player's side, used to flash a denied tap on disabled. */
+  private slotShake: number[] = new Array(SLOT_COUNT).fill(0);
+  private rpsLegend!: Phaser.GameObjects.Text;
   private upgradeBtnBg!: Phaser.GameObjects.Graphics;
   private upgradeBtnLabel!: Phaser.GameObjects.Text;
   private upgradeBtnZone!: Phaser.GameObjects.Zone;
@@ -250,6 +270,7 @@ export class GameScene extends Phaser.Scene {
     this.createSlotHitAreas();
     this.createUpgradeButton();
     this.createControlButtons();
+    this.createRpsLegend();
     this.applyLayout();
 
     this.scale.on("resize", this.onResize, this);
@@ -276,6 +297,10 @@ export class GameScene extends Phaser.Scene {
     this.winText.setPosition(L.W / 2, L.H / 2);
     this.countdownText.setPosition(L.W / 2, L.H / 2);
     this.pausedText.setPosition(L.W / 2, L.H / 2 - 140);
+    if (this.rpsLegend) {
+      const rb = L.restartBtn;
+      this.rpsLegend.setPosition(rb.x + rb.size, rb.y + rb.size + 6);
+    }
 
     this.bgZone.setPosition(L.W / 2, L.H / 2).setSize(L.W, L.H);
 
@@ -318,6 +343,11 @@ export class GameScene extends Phaser.Scene {
       step(this.state, dt);
       this.ai.update(this.state, dt);
     }
+    for (let i = 0; i < this.slotShake.length; i++) {
+      if (this.slotShake[i] > 0) {
+        this.slotShake[i] = Math.max(0, this.slotShake[i] - dt);
+      }
+    }
     this.render();
   }
 
@@ -330,6 +360,8 @@ export class GameScene extends Phaser.Scene {
     this.drawSclerotia();
     this.drawStructures("left");
     this.drawStructures("right");
+    this.drawCombatLines("left");
+    this.drawCombatLines("right");
     this.updateHud();
     this.updateBuildButtons();
     this.updateUpgradeButton();
@@ -337,6 +369,36 @@ export class GameScene extends Phaser.Scene {
     this.updateCountdown();
     this.updatePausedOverlay();
     this.updateControlButtons();
+  }
+
+  private slotPosFor(side: Side, slotIdx: number): SlotSpec {
+    return side === "left"
+      ? this.layout.leftSlots[slotIdx]
+      : this.layout.rightSlots[slotIdx];
+  }
+
+  private findStructurePos(
+    side: Side,
+    id: number,
+  ): { pos: SlotSpec; structure: Structure } | null {
+    const colony = this.state[side];
+    for (let i = 0; i < colony.slots.length; i++) {
+      const s = colony.slots[i];
+      if (s && s.id === id) {
+        return { pos: this.slotPosFor(side, i), structure: s };
+      }
+    }
+    return null;
+  }
+
+  private smotherRateOf(side: Side): number {
+    let rate = 0;
+    for (const s of this.state[side].slots) {
+      if (s && s.kind === "hyphae" && s.status === "active") {
+        rate += HYPHAE_SMOTHER_RATE * levelMultiplier(s.level);
+      }
+    }
+    return rate;
   }
 
   private drawLog(): void {
@@ -367,10 +429,21 @@ export class GameScene extends Phaser.Scene {
     this.bg.fillStyle(RIGHT_TINT, 0.45);
     this.bg.fillRect(frontX, L.logTop, L.logRight - frontX, L.logH);
 
-    // Contested seam — silvery shimmer
+    // Contested seam — silvery shimmer. Widens during any active fruiting burst.
+    const burstingSides = this.activeBurstStrength();
+    const seamWidth = 4 + burstingSides * 6;
     const pulse = 0.55 + 0.25 * Math.sin(this.state.time * 6);
+    if (burstingSides > 0) {
+      this.fx.fillStyle(0xd9b8ff, 0.35 * burstingSides);
+      this.fx.fillRect(
+        frontX - seamWidth - 6,
+        L.logTop - 8,
+        seamWidth * 2 + 12,
+        L.logH + 16,
+      );
+    }
     this.fx.fillStyle(0xcfd6ea, pulse);
-    this.fx.fillRect(frontX - 4, L.logTop - 4, 8, L.logH + 8);
+    this.fx.fillRect(frontX - seamWidth, L.logTop - 4, seamWidth * 2, L.logH + 8);
 
     // Net pressure glow
     const pL = pressureOf(this.state, "left");
@@ -383,6 +456,22 @@ export class GameScene extends Phaser.Scene {
       this.fx.fillStyle(tint, 0.25);
       this.fx.fillCircle(glowX, L.logTop + L.logH / 2, 48);
     }
+  }
+
+  /** Returns 0..2 — sum of "burst intensity" across both sides for seam emphasis. */
+  private activeBurstStrength(): number {
+    let total = 0;
+    for (const side of ["left", "right"] as Side[]) {
+      let sideStrength = 0;
+      for (const s of this.state[side].slots) {
+        if (!s || s.kind !== "fruiting") continue;
+        if ((s.surgeTimer ?? 0) > 0) {
+          sideStrength = Math.max(sideStrength, 1);
+        }
+      }
+      total += sideStrength;
+    }
+    return total;
   }
 
   private drawSclerotia(): void {
@@ -422,46 +511,167 @@ export class GameScene extends Phaser.Scene {
     const colony = this.state[side];
     const positions = side === "left" ? this.layout.leftSlots : this.layout.rightSlots;
     const r = this.layout.slotRadius;
+    const enemySide: Side = side === "left" ? "right" : "left";
+    const enemySmother = this.smotherRateOf(enemySide);
     for (let i = 0; i < SLOT_COUNT; i++) {
-      const pos = positions[i];
+      const basePos = positions[i];
       const s = colony.slots[i];
+
+      // Shake offset for player-side denied taps on disabled slots.
+      let shakeDx = 0;
+      let shakeDy = 0;
+      if (side === "left" && this.slotShake[i] > 0) {
+        const t = this.slotShake[i];
+        shakeDx = Math.sin(t * 60) * 4;
+      }
+      const x = basePos.x + shakeDx;
+      const y = basePos.y + shakeDy;
 
       // Slot frame
       this.bg.lineStyle(2, 0x6a4a30, 0.6);
-      this.bg.strokeCircle(pos.x, pos.y, r);
+      this.bg.strokeCircle(basePos.x, basePos.y, r);
 
       if (!s) continue;
       const cfg = STRUCTURES[s.kind];
+      const disabled = s.status === "disabled";
 
-      // Fill by kind with alpha by status
-      const alpha = s.status === "active" ? 1 : 0.45;
-      this.bg.fillStyle(cfg.color, alpha);
-      this.bg.fillCircle(pos.x, pos.y, r - 4);
+      // Fill by kind. Disabled = desaturated (greyed) and droopy.
+      let fillColor = cfg.color;
+      let alpha: number;
+      if (disabled) {
+        fillColor = desaturate(cfg.color, 0.6);
+        alpha = 0.55;
+      } else if (s.status === "active") {
+        alpha = 1;
+      } else {
+        alpha = 0.45;
+      }
+      const droop = disabled ? 4 : 0;
+      this.bg.fillStyle(fillColor, alpha);
+      this.bg.fillCircle(x, y + droop, r - 4);
 
       // Ring (level indicator)
       if (s.level > 1) {
-        this.bg.lineStyle(3, 0xf5e8c8, 0.9);
-        this.bg.strokeCircle(pos.x, pos.y, r - 4);
+        this.bg.lineStyle(3, 0xf5e8c8, disabled ? 0.4 : 0.9);
+        this.bg.strokeCircle(x, y + droop, r - 4);
       }
 
-      // Progress arc while growing/mutating
-      if (s.status !== "active") {
+      // Progress arc while growing/mutating.
+      if (s.status === "growing" || s.status === "mutating") {
         const cfgTime =
           s.status === "growing" ? cfg.buildTime : cfg.mutateTime;
         const prog = 1 - s.timer / cfgTime;
         const end = -Math.PI / 2 + prog * Math.PI * 2;
         this.fx.lineStyle(4, 0xf5e8c8, 0.95);
         this.fx.beginPath();
-        this.fx.arc(pos.x, pos.y, r + 2, -Math.PI / 2, end, false);
+        this.fx.arc(x, y, r + 2, -Math.PI / 2, end, false);
         this.fx.strokePath();
       }
 
-      // Pressure wave (active structures only, periodic pulse)
+      // Disable countdown ring while disabled.
+      if (disabled) {
+        const remaining = s.disableTimer / DISABLE_DURATION;
+        const end = -Math.PI / 2 + remaining * Math.PI * 2;
+        this.fx.lineStyle(4, 0xff6a4a, 0.85);
+        this.fx.beginPath();
+        this.fx.arc(x, y, r + 4, -Math.PI / 2, end, false);
+        this.fx.strokePath();
+        // "Z" / Z-like wisp to read as offline.
+        this.fx.lineStyle(2, 0xffd0a0, 0.8);
+        this.fx.strokeCircle(x, y - r - 8, 3);
+      }
+
+      // Pressure wave (active structures only, periodic pulse). Skip pure-residual fruiting
+      // so the visual reflects when it's actually surging.
       if (s.status === "active" && cfg.basePressure > 0) {
-        const phase = (this.state.time * 0.8 + s.id * 0.37) % 1;
-        const pr = r - 4 + phase * 32;
-        this.fx.lineStyle(2, cfg.color, 1 - phase);
-        this.fx.strokeCircle(pos.x, pos.y, pr);
+        const showPulse = s.kind !== "fruiting" || (s.surgeTimer ?? 0) > 0;
+        if (showPulse) {
+          const phase = (this.state.time * 0.8 + s.id * 0.37) % 1;
+          const pr = r - 4 + phase * 32;
+          this.fx.lineStyle(2, cfg.color, 1 - phase);
+          this.fx.strokeCircle(x, y, pr);
+        }
+      }
+
+      // Disable meter — thin horizontal bar under any structure with disableMeter > 0.
+      if (s.disableMeter > 0 && !disabled) {
+        const barW = (r - 4) * 2;
+        const barH = 4;
+        const barX = x - barW / 2;
+        const barY = y + r + 4;
+        const fill = s.disableMeter / DISABLE_THRESHOLD;
+        const alphaBar = Math.min(1, 0.3 + fill);
+        this.fx.fillStyle(0x000000, 0.5 * alphaBar);
+        this.fx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        this.fx.fillStyle(0x2a1810, alphaBar);
+        this.fx.fillRect(barX, barY, barW, barH);
+        this.fx.fillStyle(0xff6a4a, alphaBar);
+        this.fx.fillRect(barX, barY, barW * fill, barH);
+      }
+
+      // Fruiting: vertical surge meter + smother haze.
+      if (s.kind === "fruiting" && !disabled && s.status === "active") {
+        const charge = (s.surgeCharge ?? 0) / SURGE_THRESHOLD;
+        const meterH = (r - 4) * 2;
+        const meterW = 5;
+        const meterX = x + r + 2;
+        const meterY = y - meterH / 2;
+        this.fx.fillStyle(0x000000, 0.5);
+        this.fx.fillRect(meterX - 1, meterY - 1, meterW + 2, meterH + 2);
+        this.fx.fillStyle(0x2a1830, 1);
+        this.fx.fillRect(meterX, meterY, meterW, meterH);
+        this.fx.fillStyle(0xc080ff, 1);
+        const fillH = meterH * charge;
+        this.fx.fillRect(meterX, meterY + (meterH - fillH), meterW, fillH);
+        // Smother haze — green wash if any enemy hyphae are smothering this fruiting.
+        if (enemySmother > 0) {
+          const intensity = Math.min(0.45, 0.12 + enemySmother / 60);
+          this.fx.fillStyle(0x9bd45a, intensity);
+          this.fx.fillCircle(x, y, r + 6);
+        }
+      }
+    }
+  }
+
+  private drawCombatLines(side: Side): void {
+    const colony = this.state[side];
+    const enemy: Side = side === "left" ? "right" : "left";
+    for (let i = 0; i < colony.slots.length; i++) {
+      const s = colony.slots[i];
+      if (!s || s.status !== "active") continue;
+      const fromPos = this.slotPosFor(side, i);
+
+      if (s.kind === "rhizomorph" && s.rhizoTargetId != null) {
+        const targetInfo = this.findStructurePos(enemy, s.rhizoTargetId);
+        if (!targetInfo) continue;
+        const tp = targetInfo.pos;
+        const pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(this.state.time * 8 + s.id));
+        this.fx.lineStyle(2, 0xdfe4ec, pulse);
+        this.fx.beginPath();
+        this.fx.moveTo(fromPos.x, fromPos.y);
+        this.fx.lineTo(tp.x, tp.y);
+        this.fx.strokePath();
+        // Small dot at the impact point.
+        this.fx.fillStyle(0xdfe4ec, pulse);
+        this.fx.fillCircle(tp.x, tp.y, 3);
+      }
+
+      if (s.kind === "fruiting" && (s.surgeTimer ?? 0) > 0 && s.surgeTargetId != null) {
+        const targetInfo = this.findStructurePos(enemy, s.surgeTargetId);
+        if (!targetInfo) continue;
+        const tp = targetInfo.pos;
+        // Pulse races toward target during the burst window.
+        const cfgDur = 1; // visual lifetime of the streak
+        const t = 1 - Math.min(1, (s.surgeTimer ?? 0) / cfgDur);
+        const headX = fromPos.x + (tp.x - fromPos.x) * t;
+        const headY = fromPos.y + (tp.y - fromPos.y) * t;
+        this.fx.lineStyle(4, 0xc080ff, 0.85);
+        this.fx.beginPath();
+        this.fx.moveTo(fromPos.x, fromPos.y);
+        this.fx.lineTo(headX, headY);
+        this.fx.strokePath();
+        this.fx.fillStyle(0xe8c0ff, 1);
+        this.fx.fillCircle(headX, headY, 6);
       }
     }
   }
@@ -634,6 +844,17 @@ export class GameScene extends Phaser.Scene {
     btn.bg.strokeRoundedRect(x, y, size, size, 10);
   }
 
+  private createRpsLegend(): void {
+    this.rpsLegend = this.add
+      .text(0, 0, "Hyphae \u25B6 Fruiting \u25B6 Rhizo \u25B6 Hyphae", {
+        fontSize: "14px",
+        color: "#cdb98a",
+        fontFamily: "system-ui, sans-serif",
+      })
+      .setOrigin(1, 0)
+      .setDepth(5);
+  }
+
   private togglePause(): void {
     if (this.state.winner) return;
     if (this.state.countdown > 0) return;
@@ -662,6 +883,11 @@ export class GameScene extends Phaser.Scene {
     // Only selectable slots with a structure. Empty slots use the build bar.
     if (!s) {
       this.selectedSlotIdx = null;
+      return;
+    }
+    if (s.status === "disabled") {
+      // Reject the selection visibly — flash + shake. Keep current selection.
+      this.slotShake[idx] = 0.35;
       return;
     }
     this.selectedSlotIdx = idx;
@@ -742,7 +968,12 @@ export class GameScene extends Phaser.Scene {
     let textColor: string;
     let borderColor: number;
     let fillColor: number;
-    if (s.status === "growing") {
+    if (s.status === "disabled") {
+      text = `Disabled\n${s.disableTimer.toFixed(1)}s`;
+      textColor = "#ff9a7a";
+      borderColor = 0xff6a4a;
+      fillColor = 0x2a1410;
+    } else if (s.status === "growing") {
       text = `Growing…\n${s.timer.toFixed(1)}s`;
       textColor = "#8a7a60";
       borderColor = 0x4a3420;

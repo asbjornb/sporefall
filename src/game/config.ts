@@ -81,3 +81,38 @@ export const SCLEROTIUM_DAMAGE = 6;
 
 /** How fast the front moves in normalized-units/second per unit of net pressure. */
 export const FRONT_SPEED = 0.008;
+
+// ---------- RPS / disable system ----------
+
+/** Common cap on every structure's disable meter. */
+export const DISABLE_THRESHOLD = 100;
+/** Seconds a disabled structure stays offline before recovering to active. */
+export const DISABLE_DURATION = 6;
+/** Passive decay of any non-zero disable meter per second. Keeps brief exposure from accumulating forever. */
+export const DISABLE_METER_DECAY = 6;
+
+/** Hyphae smother: per-active-hyphae disable rate applied to every active enemy fruiting per second. */
+export const HYPHAE_SMOTHER_RATE = 9;
+/**
+ * Maximum proportional slow on a fruiting's surge charge from its own smother meter.
+ * 1.0 = full halt at meter == threshold; 0 = no slow.
+ */
+export const HYPHAE_SMOTHER_SURGE_SLOW = 0.85;
+
+/** Rhizomorph dissolve rate (disable damage / second) at level 1 against non-hyphae targets. */
+export const RHIZO_DISSOLVE_RATE = 8;
+/** Multiplier vs hyphae targets. */
+export const RHIZO_DISSOLVE_VS_HYPHAE = 3;
+
+/** Fruiting surge meter threshold. */
+export const SURGE_THRESHOLD = 100;
+/** Base surge charge rate at level 1, per second. */
+export const SURGE_CHARGE_RATE = 12;
+/** Disable damage delivered by a single fruiting burst at level 1. ~one-shots a level-1 rhizo. */
+export const SURGE_BURST_DAMAGE = 110;
+/** Seconds the post-burst pressure spike lasts. */
+export const SURGE_BURST_DURATION = 1.6;
+/** Pressure multiplier on the bursting fruiting while surgeTimer > 0. */
+export const SURGE_BURST_PRESSURE_MULT = 6;
+/** Residual pressure multiplier on a fruiting outside its burst window. */
+export const FRUITING_RESIDUAL_PRESSURE_MULT = 0.25;
