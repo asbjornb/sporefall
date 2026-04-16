@@ -60,17 +60,28 @@ const RIGHT_SLOTS = slotPositions("right");
 export class GameScene extends Phaser.Scene {
   private state!: GameState;
   private ai!: SimpleAI;
+  private paused = false;
   private bg!: Phaser.GameObjects.Graphics;
   private fx!: Phaser.GameObjects.Graphics;
   private topText!: Phaser.GameObjects.Text;
   private winText!: Phaser.GameObjects.Text;
   private countdownText!: Phaser.GameObjects.Text;
+  private pausedText!: Phaser.GameObjects.Text;
   private buildBtns: {
     kind: StructureKind;
     container: Phaser.GameObjects.Container;
-    label: Phaser.GameObjects.Text;
+    title: Phaser.GameObjects.Text;
+    detail: Phaser.GameObjects.Text;
     bg: Phaser.GameObjects.Graphics;
   }[] = [];
+  private pauseBtn!: {
+    bg: Phaser.GameObjects.Graphics;
+    icon: Phaser.GameObjects.Text;
+  };
+  private restartBtn!: {
+    bg: Phaser.GameObjects.Graphics;
+    icon: Phaser.GameObjects.Text;
+  };
   private slotHit: Phaser.GameObjects.Arc[] = [];
   private selectedSlotIdx: number | null = null;
   private upgradeBtnBg!: Phaser.GameObjects.Graphics;
@@ -116,12 +127,26 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(20);
 
+    this.pausedText = this.add
+      .text(WIDTH / 2, HEIGHT / 2 - 140, "", {
+        fontSize: "64px",
+        color: "#f8e8c0",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setDepth(20);
+
     this.createBackgroundZone();
     this.createBuildButtons();
     this.createSlotHitAreas();
     this.createUpgradeButton();
+    this.createControlButtons();
 
     this.input.keyboard?.on("keydown-R", () => this.restart());
+    this.input.keyboard?.on("keydown-P", () => this.togglePause());
+    this.input.keyboard?.on("keydown-SPACE", () => this.togglePause());
     // Any tap/click after the game is over restarts — mobile-friendly.
     this.input.on("pointerdown", () => {
       if (this.state.winner) this.restart();
@@ -130,7 +155,7 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, deltaMs: number): void {
     const dt = Math.min(0.1, deltaMs / 1000);
-    if (!this.state.winner) {
+    if (!this.state.winner && !this.paused) {
       step(this.state, dt);
       this.ai.update(this.state, dt);
     }
@@ -151,6 +176,8 @@ export class GameScene extends Phaser.Scene {
     this.updateUpgradeButton();
     this.updateWinBanner();
     this.updateCountdown();
+    this.updatePausedOverlay();
+    this.updateControlButtons();
   }
 
   private drawLog(): void {
@@ -325,15 +352,29 @@ export class GameScene extends Phaser.Scene {
     KINDS.forEach((kind, i) => {
       const x = startX + i * (btnW + gap);
       const bg = this.add.graphics();
-      const label = this.add
-        .text(x + btnW / 2, y + btnH / 2, "", {
-          fontSize: "22px",
-          color: "#f5e8c8",
+      const title = this.add
+        .text(x + btnW / 2, y + 30, "", {
+          fontSize: "32px",
+          color: "#f8ecc8",
+          fontStyle: "bold",
           align: "center",
           fontFamily: "system-ui, sans-serif",
+          stroke: "#1b120a",
+          strokeThickness: 3,
         })
         .setOrigin(0.5);
-      const container = this.add.container(0, 0, [bg, label]);
+      const detail = this.add
+        .text(x + btnW / 2, y + 88, "", {
+          fontSize: "24px",
+          color: "#f0e2bc",
+          align: "center",
+          fontFamily: "system-ui, sans-serif",
+          stroke: "#1b120a",
+          strokeThickness: 2,
+          lineSpacing: 4,
+        })
+        .setOrigin(0.5);
+      const container = this.add.container(0, 0, [bg, title, detail]);
       const zone = this.add
         .zone(x + btnW / 2, y + btnH / 2, btnW, btnH)
         .setInteractive({ useHandCursor: true });
@@ -342,12 +383,12 @@ export class GameScene extends Phaser.Scene {
       container.setData("y", y);
       container.setData("w", btnW);
       container.setData("h", btnH);
-      this.buildBtns.push({ kind, container, label, bg });
+      this.buildBtns.push({ kind, container, title, detail, bg });
     });
   }
 
   private updateBuildButtons(): void {
-    for (const { kind, container, label, bg } of this.buildBtns) {
+    for (const { kind, container, title, detail, bg } of this.buildBtns) {
       const x = container.getData("x") as number;
       const y = container.getData("y") as number;
       const w = container.getData("w") as number;
@@ -358,21 +399,109 @@ export class GameScene extends Phaser.Scene {
       bg.clear();
       bg.fillStyle(can ? 0x3a2a18 : 0x241a10, 1);
       bg.fillRoundedRect(x, y, w, h, 10);
-      bg.lineStyle(2, can ? cfg.color : 0x4a3420, 1);
+      bg.lineStyle(3, can ? cfg.color : 0x4a3420, 1);
       bg.strokeRoundedRect(x, y, w, h, 10);
 
       const info =
         kind === "decomposer"
           ? `+${cfg.incomeBonus}/s income`
-          : `pressure ${cfg.basePressure}`;
-      label.setText(`${cfg.label}\n${cfg.cost}n   ${cfg.buildTime}s\n${info}`);
-      label.setColor(can ? "#f5e8c8" : "#8a7a60");
+          : `${cfg.basePressure} pressure`;
+      title.setText(cfg.label);
+      title.setColor(can ? "#f8ecc8" : "#9a8a70");
+      detail.setText(`${cfg.cost}n · ${cfg.buildTime}s\n${info}`);
+      detail.setColor(can ? "#f0e2bc" : "#8a7a60");
     }
   }
 
   private onBuildTap(kind: StructureKind): void {
-    if (this.state.winner) return;
+    if (this.state.winner || this.paused) return;
     build(this.state, "left", kind);
+  }
+
+  // ---------- UI: pause/restart controls ----------
+
+  private createControlButtons(): void {
+    const size = 64;
+    const gap = 12;
+    const restartX = WIDTH - size - 16;
+    const pauseX = restartX - size - gap;
+    const y = 16;
+
+    const pauseBg = this.add.graphics().setDepth(15);
+    const pauseIcon = this.add
+      .text(pauseX + size / 2, y + size / 2, "", {
+        fontSize: "34px",
+        color: "#f8ecc8",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+      })
+      .setOrigin(0.5)
+      .setDepth(16);
+    const pauseZone = this.add
+      .zone(pauseX + size / 2, y + size / 2, size, size)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(16);
+    pauseZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation?.();
+      this.togglePause();
+    });
+    this.pauseBtn = { bg: pauseBg, icon: pauseIcon };
+    this.pauseBtn.bg.setData("x", pauseX);
+    this.pauseBtn.bg.setData("y", y);
+    this.pauseBtn.bg.setData("size", size);
+
+    const restartBg = this.add.graphics().setDepth(15);
+    const restartIcon = this.add
+      .text(restartX + size / 2, y + size / 2, "\u21BB", {
+        fontSize: "40px",
+        color: "#f8ecc8",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+      })
+      .setOrigin(0.5)
+      .setDepth(16);
+    const restartZone = this.add
+      .zone(restartX + size / 2, y + size / 2, size, size)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(16);
+    restartZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation?.();
+      this.restart();
+    });
+    this.restartBtn = { bg: restartBg, icon: restartIcon };
+    this.restartBtn.bg.setData("x", restartX);
+    this.restartBtn.bg.setData("y", y);
+    this.restartBtn.bg.setData("size", size);
+  }
+
+  private updateControlButtons(): void {
+    this.drawControlButton(this.pauseBtn, this.paused ? 0x3a5a28 : 0x3a2a18);
+    this.pauseBtn.icon.setText(this.paused ? "\u25B6" : "\u23F8");
+    this.drawControlButton(this.restartBtn, 0x3a2a18);
+  }
+
+  private drawControlButton(
+    btn: { bg: Phaser.GameObjects.Graphics; icon: Phaser.GameObjects.Text },
+    fill: number,
+  ): void {
+    const x = btn.bg.getData("x") as number;
+    const y = btn.bg.getData("y") as number;
+    const size = btn.bg.getData("size") as number;
+    btn.bg.clear();
+    btn.bg.fillStyle(fill, 0.9);
+    btn.bg.fillRoundedRect(x, y, size, size, 10);
+    btn.bg.lineStyle(2, 0xf5e8c8, 0.8);
+    btn.bg.strokeRoundedRect(x, y, size, size, 10);
+  }
+
+  private togglePause(): void {
+    if (this.state.winner) return;
+    if (this.state.countdown > 0) return;
+    this.paused = !this.paused;
+  }
+
+  private updatePausedOverlay(): void {
+    this.pausedText.setText(this.paused && !this.state.winner ? "PAUSED" : "");
   }
 
   // ---------- UI: slot interactions ----------
@@ -430,6 +559,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onUpgradeTap(): void {
+    if (this.paused) return;
     const idx = this.selectedSlotIdx;
     if (idx === null) return;
     if (canMutate(this.state, "left", idx)) {
@@ -532,6 +662,7 @@ export class GameScene extends Phaser.Scene {
   private restart(): void {
     this.state = createGameState();
     this.ai = new SimpleAI("right");
+    this.paused = false;
     this.selectedSlotIdx = null;
   }
 }
