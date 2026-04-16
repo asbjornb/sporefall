@@ -67,37 +67,40 @@ function computeLayout(W: number, H: number): Layout {
   const topBarH = 80;
   const bottomPad = 14;
 
-  // Build button bar sits at the bottom.
-  const btnH = Math.max(100, Math.min(140, Math.round(H * 0.18)));
-  const maxBuildBarW = Math.min(W - 32, 1400);
-  const btnGap = 20;
-  const btnW = Math.max(
-    180,
-    Math.min(320, Math.floor((maxBuildBarW - btnGap * 3) / 4)),
-  );
-  const buildBarW = btnW * 4 + btnGap * 3;
-  const buildBarX = Math.round((W - buildBarW) / 2);
-  const buildBarY = H - btnH - bottomPad;
-  const buildBtns: BuildBtnRect[] = [];
-  for (let i = 0; i < 4; i++) {
-    buildBtns.push({ x: buildBarX + i * (btnW + btnGap), y: buildBarY, w: btnW, h: btnH });
-  }
-
-  // Slots region (2 rows) sits just above the build bar.
+  // Slots region (2 rows) sits near the bottom, where the build bar used to be.
   const slotRadius = 32;
   const slotRowGap = 70;
-  const slotAreaBottom = buildBarY - 18;
+  const slotAreaBottom = H - bottomPad;
   const slotAreaTop = slotAreaBottom - slotRowGap * 2 + (slotRowGap - slotRadius * 2) / 2;
   const row0Y = slotAreaTop + slotRadius + 4;
   const row1Y = row0Y + slotRowGap;
 
-  // Log spans between the HUD strip and the slots, as wide as possible.
+  // Build buttons stacked vertically along the left edge, aligned with the log.
+  const buildBarTop = topBarH + 30;
+  const buildBarBottom = slotAreaTop - 14;
+  const buildBarH = buildBarBottom - buildBarTop;
+  const btnGap = 16;
+  const btnH = Math.max(80, Math.min(150, Math.floor((buildBarH - btnGap * 3) / 4)));
+  const btnW = Math.max(160, Math.min(220, Math.round(W * 0.14)));
+  const leftPad = 14;
+  const buildBarX = leftPad;
+  const buildBtns: BuildBtnRect[] = [];
+  for (let i = 0; i < 4; i++) {
+    buildBtns.push({
+      x: buildBarX,
+      y: buildBarTop + i * (btnH + btnGap),
+      w: btnW,
+      h: btnH,
+    });
+  }
+
+  // Log spans between the HUD strip and the slots, starting right of the build column.
   const heartRadius = Math.max(34, Math.min(48, Math.round(H * 0.055)));
-  const sideMargin = Math.max(56, Math.min(120, Math.round(W * 0.05)));
-  const logLeft = sideMargin;
-  const logRight = W - sideMargin;
-  const logTop = topBarH + 30;
-  const logBottom = slotAreaTop - 14;
+  const rightMargin = Math.max(56, Math.min(120, Math.round(W * 0.05)));
+  const logLeft = buildBarX + btnW + 20;
+  const logRight = W - rightMargin;
+  const logTop = buildBarTop;
+  const logBottom = buildBarBottom;
   const logW = logRight - logLeft;
   const logH = Math.max(120, logBottom - logTop);
 
@@ -506,7 +509,7 @@ export class GameScene extends Phaser.Scene {
       const bg = this.add.graphics();
       const title = this.add
         .text(0, 0, "", {
-          fontSize: "32px",
+          fontSize: "22px",
           color: "#f8ecc8",
           fontStyle: "bold",
           align: "center",
@@ -517,7 +520,7 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0.5);
       const detail = this.add
         .text(0, 0, "", {
-          fontSize: "24px",
+          fontSize: "18px",
           color: "#f0e2bc",
           align: "center",
           fontFamily: "system-ui, sans-serif",
