@@ -72,6 +72,10 @@ export class GameScene extends Phaser.Scene {
     bg: Phaser.GameObjects.Graphics;
   }[] = [];
   private slotHit: Phaser.GameObjects.Arc[] = [];
+  private selectedSlotIdx: number | null = null;
+  private upgradeBtnBg!: Phaser.GameObjects.Graphics;
+  private upgradeBtnLabel!: Phaser.GameObjects.Text;
+  private upgradeBtnZone!: Phaser.GameObjects.Zone;
 
   constructor() {
     super("game");
@@ -112,8 +116,10 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(20);
 
+    this.createBackgroundZone();
     this.createBuildButtons();
     this.createSlotHitAreas();
+    this.createUpgradeButton();
 
     this.input.keyboard?.on("keydown-R", () => this.restart());
     // Any tap/click after the game is over restarts — mobile-friendly.
@@ -142,6 +148,7 @@ export class GameScene extends Phaser.Scene {
     this.drawStructures("right");
     this.updateHud();
     this.updateBuildButtons();
+    this.updateUpgradeButton();
     this.updateWinBanner();
     this.updateCountdown();
   }
@@ -373,7 +380,7 @@ export class GameScene extends Phaser.Scene {
   private createSlotHitAreas(): void {
     LEFT_SLOTS.forEach((pos, idx) => {
       const hit = this.add
-        .circle(pos.x, pos.y, 34, 0x000000, 0)
+        .circle(pos.x, pos.y, 35, 0x000000, 0)
         .setInteractive({ useHandCursor: true });
       hit.on("pointerdown", () => this.onSlotTap(idx));
       this.slotHit.push(hit);
@@ -382,13 +389,149 @@ export class GameScene extends Phaser.Scene {
 
   private onSlotTap(idx: number): void {
     if (this.state.winner) return;
+    const s = this.state.left.slots[idx];
+    // Only selectable slots with a structure. Empty slots use the build bar.
+    if (!s) {
+      this.selectedSlotIdx = null;
+      return;
+    }
+    this.selectedSlotIdx = idx;
+  }
+
+  // ---------- UI: upgrade button ----------
+
+  private createBackgroundZone(): void {
+    const zone = this.add
+      .zone(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT)
+      .setInteractive();
+    zone.setDepth(-1000);
+    zone.on("pointerdown", () => {
+      this.selectedSlotIdx = null;
+    });
+  }
+
+  private createUpgradeButton(): void {
+    this.upgradeBtnBg = this.add.graphics().setDepth(10);
+    this.upgradeBtnLabel = this.add
+      .text(0, 0, "", {
+        fontSize: "18px",
+        color: "#f5e8c8",
+        align: "center",
+        fontFamily: "system-ui, sans-serif",
+      })
+      .setOrigin(0.5)
+      .setDepth(11);
+    this.upgradeBtnZone = this.add
+      .zone(-9999, -9999, 160, 56)
+      .setInteractive({ useHandCursor: true });
+    this.upgradeBtnZone.setDepth(11);
+    this.upgradeBtnZone.on("pointerdown", () => this.onUpgradeTap());
+    this.upgradeBtnLabel.setVisible(false);
+  }
+
+  private onUpgradeTap(): void {
+    const idx = this.selectedSlotIdx;
+    if (idx === null) return;
     if (canMutate(this.state, "left", idx)) {
       mutate(this.state, "left", idx);
+    }
+  }
+
+  private updateUpgradeButton(): void {
+    this.upgradeBtnBg.clear();
+    const idx = this.selectedSlotIdx;
+    if (idx === null || this.state.winner) {
+      this.upgradeBtnLabel.setVisible(false);
+      this.upgradeBtnZone.setPosition(-9999, -9999);
+      return;
+    }
+    const s = this.state.left.slots[idx];
+    if (!s) {
+      this.selectedSlotIdx = null;
+      this.upgradeBtnLabel.setVisible(false);
+      this.upgradeBtnZone.setPosition(-9999, -9999);
+      return;
+    }
+    const cfg = STRUCTURES[s.kind];
+    const pos = LEFT_SLOTS[idx];
+
+    // Selection ring on the selected slot.
+    const pulse = 0.7 + 0.3 * Math.sin(this.state.time * 6);
+    this.upgradeBtnBg.lineStyle(3, 0xfff2c0, pulse);
+    this.upgradeBtnBg.strokeCircle(pos.x, pos.y, 38);
+
+    // Button floats above the slot. Clamp to stay on screen.
+    const btnW = 170;
+    const btnH = 56;
+    const btnX = pos.x;
+    const btnY = Math.max(btnH / 2 + 4, pos.y - 68);
+
+    const can = canMutate(this.state, "left", idx);
+    const isBusy = s.status !== "active";
+
+    let text: string;
+    let textColor: string;
+    let borderColor: number;
+    let fillColor: number;
+    if (s.status === "growing") {
+      text = `Growing…\n${s.timer.toFixed(1)}s`;
+      textColor = "#8a7a60";
+      borderColor = 0x4a3420;
+      fillColor = 0x241a10;
+    } else if (s.status === "mutating") {
+      text = `Upgrading → Lv${s.level + 1}\n${s.timer.toFixed(1)}s`;
+      textColor = "#8a7a60";
+      borderColor = 0x4a3420;
+      fillColor = 0x241a10;
+    } else if (can) {
+      text = `Upgrade → Lv${s.level + 1}\n${cfg.mutateCost}n`;
+      textColor = "#f5e8c8";
+      borderColor = cfg.color;
+      fillColor = 0x3a2a18;
+    } else {
+      const need = cfg.mutateCost;
+      const have = Math.floor(this.state.left.nutrients);
+      text = `Upgrade → Lv${s.level + 1}\n${have}/${need}n`;
+      textColor = "#8a7a60";
+      borderColor = 0x4a3420;
+      fillColor = 0x241a10;
+    }
+
+    this.upgradeBtnBg.fillStyle(fillColor, 0.96);
+    this.upgradeBtnBg.fillRoundedRect(
+      btnX - btnW / 2,
+      btnY - btnH / 2,
+      btnW,
+      btnH,
+      10,
+    );
+    this.upgradeBtnBg.lineStyle(2, borderColor, 1);
+    this.upgradeBtnBg.strokeRoundedRect(
+      btnX - btnW / 2,
+      btnY - btnH / 2,
+      btnW,
+      btnH,
+      10,
+    );
+
+    this.upgradeBtnLabel
+      .setVisible(true)
+      .setPosition(btnX, btnY)
+      .setText(text)
+      .setColor(textColor);
+
+    // Keep the zone active only when the button actually does something.
+    if (isBusy) {
+      this.upgradeBtnZone.setPosition(-9999, -9999);
+    } else {
+      this.upgradeBtnZone.setPosition(btnX, btnY);
+      this.upgradeBtnZone.setSize(btnW, btnH);
     }
   }
 
   private restart(): void {
     this.state = createGameState();
     this.ai = new SimpleAI("right");
+    this.selectedSlotIdx = null;
   }
 }
