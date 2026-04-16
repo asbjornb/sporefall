@@ -12,15 +12,6 @@ import {
 } from "../game/sim";
 import type { GameState, Side, StructureKind } from "../game/types";
 
-const WIDTH = 1280;
-const HEIGHT = 720;
-const LOG_LEFT = 80;
-const LOG_RIGHT = 1200;
-const LOG_TOP = 110;
-const LOG_H = 260;
-const LOG_BOTTOM = LOG_TOP + LOG_H;
-const LOG_W = LOG_RIGHT - LOG_LEFT;
-
 const LEFT_TINT = 0x9bb04a;
 const RIGHT_TINT = 0xc46a3a;
 const LOG_BODY = 0x5a3a20;
@@ -38,24 +29,131 @@ interface SlotSpec {
   y: number;
 }
 
-function slotPositions(side: Side): SlotSpec[] {
-  // 2x5 grid just inward from each sclerotium.
-  const baseX = side === "left" ? 180 : 1100;
-  const dx = side === "left" ? 80 : -80;
-  const positions: SlotSpec[] = [];
-  for (let row = 0; row < 2; row++) {
-    for (let col = 0; col < 5; col++) {
-      positions.push({
-        x: baseX + dx * col,
-        y: LOG_BOTTOM + 55 + row * 70,
-      });
-    }
-  }
-  return positions;
+interface BuildBtnRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
-const LEFT_SLOTS = slotPositions("left");
-const RIGHT_SLOTS = slotPositions("right");
+interface ControlBtnRect {
+  x: number;
+  y: number;
+  size: number;
+}
+
+interface Layout {
+  W: number;
+  H: number;
+  logLeft: number;
+  logRight: number;
+  logTop: number;
+  logBottom: number;
+  logW: number;
+  logH: number;
+  heartRadius: number;
+  leftHeartX: number;
+  rightHeartX: number;
+  heartY: number;
+  leftSlots: SlotSpec[];
+  rightSlots: SlotSpec[];
+  slotRadius: number;
+  buildBtns: BuildBtnRect[];
+  pauseBtn: ControlBtnRect;
+  restartBtn: ControlBtnRect;
+}
+
+function computeLayout(W: number, H: number): Layout {
+  const topBarH = 80;
+  const bottomPad = 14;
+
+  // Build button bar sits at the bottom.
+  const btnH = Math.max(100, Math.min(140, Math.round(H * 0.18)));
+  const maxBuildBarW = Math.min(W - 32, 1400);
+  const btnGap = 20;
+  const btnW = Math.max(
+    180,
+    Math.min(320, Math.floor((maxBuildBarW - btnGap * 3) / 4)),
+  );
+  const buildBarW = btnW * 4 + btnGap * 3;
+  const buildBarX = Math.round((W - buildBarW) / 2);
+  const buildBarY = H - btnH - bottomPad;
+  const buildBtns: BuildBtnRect[] = [];
+  for (let i = 0; i < 4; i++) {
+    buildBtns.push({ x: buildBarX + i * (btnW + btnGap), y: buildBarY, w: btnW, h: btnH });
+  }
+
+  // Slots region (2 rows) sits just above the build bar.
+  const slotRadius = 32;
+  const slotRowGap = 70;
+  const slotAreaBottom = buildBarY - 18;
+  const slotAreaTop = slotAreaBottom - slotRowGap * 2 + (slotRowGap - slotRadius * 2) / 2;
+  const row0Y = slotAreaTop + slotRadius + 4;
+  const row1Y = row0Y + slotRowGap;
+
+  // Log spans between the HUD strip and the slots, as wide as possible.
+  const heartRadius = Math.max(34, Math.min(48, Math.round(H * 0.055)));
+  const sideMargin = Math.max(56, Math.min(120, Math.round(W * 0.05)));
+  const logLeft = sideMargin;
+  const logRight = W - sideMargin;
+  const logTop = topBarH + 30;
+  const logBottom = slotAreaTop - 14;
+  const logW = logRight - logLeft;
+  const logH = Math.max(120, logBottom - logTop);
+
+  const leftHeartX = logLeft + heartRadius * 0.55;
+  const rightHeartX = logRight - heartRadius * 0.55;
+  const heartY = logTop + logH / 2;
+
+  // Slot columns start one spacing inward from each sclerotium.
+  const innerHalf = Math.max(0, (rightHeartX - leftHeartX) / 2 - 40);
+  const slotSpacing = Math.max(70, Math.min(110, innerHalf / 5));
+  const leftSlots: SlotSpec[] = [];
+  const rightSlots: SlotSpec[] = [];
+  for (let row = 0; row < 2; row++) {
+    const y = row === 0 ? row0Y : row1Y;
+    for (let col = 0; col < 5; col++) {
+      leftSlots.push({ x: leftHeartX + slotSpacing * (col + 1), y });
+      rightSlots.push({ x: rightHeartX - slotSpacing * (col + 1), y });
+    }
+  }
+
+  // Top-right control buttons.
+  const ctrlSize = 60;
+  const ctrlGap = 12;
+  const ctrlMargin = 14;
+  const restartBtn: ControlBtnRect = {
+    x: W - ctrlSize - ctrlMargin,
+    y: ctrlMargin,
+    size: ctrlSize,
+  };
+  const pauseBtn: ControlBtnRect = {
+    x: restartBtn.x - ctrlSize - ctrlGap,
+    y: ctrlMargin,
+    size: ctrlSize,
+  };
+
+  return {
+    W,
+    H,
+    logLeft,
+    logRight,
+    logTop,
+    logBottom,
+    logW,
+    logH,
+    heartRadius,
+    leftHeartX,
+    rightHeartX,
+    heartY,
+    leftSlots,
+    rightSlots,
+    slotRadius,
+    buildBtns,
+    pauseBtn,
+    restartBtn,
+  };
+}
 
 export class GameScene extends Phaser.Scene {
   private state!: GameState;
@@ -87,6 +185,11 @@ export class GameScene extends Phaser.Scene {
   private upgradeBtnBg!: Phaser.GameObjects.Graphics;
   private upgradeBtnLabel!: Phaser.GameObjects.Text;
   private upgradeBtnZone!: Phaser.GameObjects.Zone;
+  private buildBtnZones: Phaser.GameObjects.Zone[] = [];
+  private pauseBtnZone!: Phaser.GameObjects.Zone;
+  private restartBtnZone!: Phaser.GameObjects.Zone;
+  private bgZone!: Phaser.GameObjects.Zone;
+  private layout!: Layout;
 
   constructor() {
     super("game");
@@ -95,6 +198,7 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.state = createGameState();
     this.ai = new SimpleAI("right");
+    this.layout = computeLayout(this.scale.width, this.scale.height);
 
     this.bg = this.add.graphics();
     this.fx = this.add.graphics();
@@ -106,7 +210,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.winText = this.add
-      .text(WIDTH / 2, HEIGHT / 2, "", {
+      .text(0, 0, "", {
         fontSize: "76px",
         color: "#f8e8c0",
         fontStyle: "bold",
@@ -117,7 +221,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(20);
 
     this.countdownText = this.add
-      .text(WIDTH / 2, HEIGHT / 2, "", {
+      .text(0, 0, "", {
         fontSize: "180px",
         color: "#f8e8c0",
         fontStyle: "bold",
@@ -128,7 +232,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(20);
 
     this.pausedText = this.add
-      .text(WIDTH / 2, HEIGHT / 2 - 140, "", {
+      .text(0, 0, "", {
         fontSize: "64px",
         color: "#f8e8c0",
         fontStyle: "bold",
@@ -143,6 +247,12 @@ export class GameScene extends Phaser.Scene {
     this.createSlotHitAreas();
     this.createUpgradeButton();
     this.createControlButtons();
+    this.applyLayout();
+
+    this.scale.on("resize", this.onResize, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off("resize", this.onResize, this);
+    });
 
     this.input.keyboard?.on("keydown-R", () => this.restart());
     this.input.keyboard?.on("keydown-P", () => this.togglePause());
@@ -151,6 +261,52 @@ export class GameScene extends Phaser.Scene {
     this.input.on("pointerdown", () => {
       if (this.state.winner) this.restart();
     });
+  }
+
+  private onResize(gameSize: Phaser.Structs.Size): void {
+    this.layout = computeLayout(gameSize.width, gameSize.height);
+    this.applyLayout();
+  }
+
+  private applyLayout(): void {
+    const L = this.layout;
+    this.winText.setPosition(L.W / 2, L.H / 2);
+    this.countdownText.setPosition(L.W / 2, L.H / 2);
+    this.pausedText.setPosition(L.W / 2, L.H / 2 - 140);
+
+    this.bgZone.setPosition(L.W / 2, L.H / 2).setSize(L.W, L.H);
+
+    this.buildBtns.forEach((entry, i) => {
+      const rect = L.buildBtns[i];
+      entry.container.setData("x", rect.x);
+      entry.container.setData("y", rect.y);
+      entry.container.setData("w", rect.w);
+      entry.container.setData("h", rect.h);
+      entry.title.setPosition(rect.x + rect.w / 2, rect.y + rect.h * 0.25);
+      entry.detail.setPosition(rect.x + rect.w / 2, rect.y + rect.h * 0.68);
+      const zone = this.buildBtnZones[i];
+      zone.setPosition(rect.x + rect.w / 2, rect.y + rect.h / 2);
+      zone.setSize(rect.w, rect.h);
+    });
+
+    this.slotHit.forEach((hit, i) => {
+      const pos = L.leftSlots[i];
+      hit.setPosition(pos.x, pos.y);
+    });
+
+    const pb = L.pauseBtn;
+    this.pauseBtn.bg.setData("x", pb.x).setData("y", pb.y).setData("size", pb.size);
+    this.pauseBtn.icon.setPosition(pb.x + pb.size / 2, pb.y + pb.size / 2);
+    this.pauseBtnZone
+      .setPosition(pb.x + pb.size / 2, pb.y + pb.size / 2)
+      .setSize(pb.size, pb.size);
+
+    const rb = L.restartBtn;
+    this.restartBtn.bg.setData("x", rb.x).setData("y", rb.y).setData("size", rb.size);
+    this.restartBtn.icon.setPosition(rb.x + rb.size / 2, rb.y + rb.size / 2);
+    this.restartBtnZone
+      .setPosition(rb.x + rb.size / 2, rb.y + rb.size / 2)
+      .setSize(rb.size, rb.size);
   }
 
   update(_time: number, deltaMs: number): void {
@@ -181,36 +337,37 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawLog(): void {
+    const L = this.layout;
     // Log body (bark)
     this.bg.fillStyle(LOG_BARK, 1);
-    this.bg.fillRoundedRect(LOG_LEFT - 10, LOG_TOP - 10, LOG_W + 20, LOG_H + 20, 16);
+    this.bg.fillRoundedRect(L.logLeft - 10, L.logTop - 10, L.logW + 20, L.logH + 20, 16);
     this.bg.fillStyle(LOG_BODY, 1);
-    this.bg.fillRoundedRect(LOG_LEFT, LOG_TOP, LOG_W, LOG_H, 12);
+    this.bg.fillRoundedRect(L.logLeft, L.logTop, L.logW, L.logH, 12);
 
     // Grain lines
     this.bg.lineStyle(1, 0x2a1a0a, 0.4);
     for (let i = 1; i < 5; i++) {
-      const y = LOG_TOP + (LOG_H * i) / 5;
+      const y = L.logTop + (L.logH * i) / 5;
       this.bg.beginPath();
-      this.bg.moveTo(LOG_LEFT + 8, y);
-      this.bg.lineTo(LOG_RIGHT - 8, y);
+      this.bg.moveTo(L.logLeft + 8, y);
+      this.bg.lineTo(L.logRight - 8, y);
       this.bg.strokePath();
     }
 
-    const frontX = LOG_LEFT + LOG_W * this.state.front;
+    const frontX = L.logLeft + L.logW * this.state.front;
 
     // Left colony color flow
     this.bg.fillStyle(LEFT_TINT, 0.45);
-    this.bg.fillRect(LOG_LEFT, LOG_TOP, frontX - LOG_LEFT, LOG_H);
+    this.bg.fillRect(L.logLeft, L.logTop, frontX - L.logLeft, L.logH);
 
     // Right colony color flow
     this.bg.fillStyle(RIGHT_TINT, 0.45);
-    this.bg.fillRect(frontX, LOG_TOP, LOG_RIGHT - frontX, LOG_H);
+    this.bg.fillRect(frontX, L.logTop, L.logRight - frontX, L.logH);
 
     // Contested seam — silvery shimmer
     const pulse = 0.55 + 0.25 * Math.sin(this.state.time * 6);
     this.fx.fillStyle(0xcfd6ea, pulse);
-    this.fx.fillRect(frontX - 4, LOG_TOP - 4, 8, LOG_H + 8);
+    this.fx.fillRect(frontX - 4, L.logTop - 4, 8, L.logH + 8);
 
     // Net pressure glow
     const pL = pressureOf(this.state, "left");
@@ -221,32 +378,34 @@ export class GameScene extends Phaser.Scene {
       const dir = net > 0 ? 1 : -1;
       const glowX = frontX + dir * 36;
       this.fx.fillStyle(tint, 0.25);
-      this.fx.fillCircle(glowX, LOG_TOP + LOG_H / 2, 48);
+      this.fx.fillCircle(glowX, L.logTop + L.logH / 2, 48);
     }
   }
 
   private drawSclerotia(): void {
-    this.drawHeart("left", 100, LOG_TOP + LOG_H / 2);
-    this.drawHeart("right", 1180, LOG_TOP + LOG_H / 2);
+    const L = this.layout;
+    this.drawHeart("left", L.leftHeartX, L.heartY);
+    this.drawHeart("right", L.rightHeartX, L.heartY);
   }
 
   private drawHeart(side: Side, x: number, y: number): void {
     const colony = this.state[side];
     const color = side === "left" ? LEFT_TINT : RIGHT_TINT;
+    const r = this.layout.heartRadius;
     // outer glow
     this.bg.fillStyle(color, 0.25);
-    this.bg.fillCircle(x, y, 64);
+    this.bg.fillCircle(x, y, r * 1.7);
     // core
     this.bg.fillStyle(color, 1);
-    this.bg.fillCircle(x, y, 38);
+    this.bg.fillCircle(x, y, r);
     this.bg.fillStyle(0xf5e8c8, 0.8);
-    this.bg.fillCircle(x, y, 14);
+    this.bg.fillCircle(x, y, r * 0.38);
 
     // HP bar above the log so it never sits on bark
     const hpW = 140;
     const hpH = 14;
     const hpX = x - hpW / 2;
-    const hpY = LOG_TOP - 26;
+    const hpY = this.layout.logTop - 26;
     this.fx.fillStyle(0x000000, 0.5);
     this.fx.fillRect(hpX - 2, hpY - 2, hpW + 4, hpH + 4);
     this.fx.fillStyle(0x3a1a12, 1);
@@ -258,14 +417,15 @@ export class GameScene extends Phaser.Scene {
 
   private drawStructures(side: Side): void {
     const colony = this.state[side];
-    const positions = side === "left" ? LEFT_SLOTS : RIGHT_SLOTS;
+    const positions = side === "left" ? this.layout.leftSlots : this.layout.rightSlots;
+    const r = this.layout.slotRadius;
     for (let i = 0; i < SLOT_COUNT; i++) {
       const pos = positions[i];
       const s = colony.slots[i];
 
       // Slot frame
       this.bg.lineStyle(2, 0x6a4a30, 0.6);
-      this.bg.strokeCircle(pos.x, pos.y, 32);
+      this.bg.strokeCircle(pos.x, pos.y, r);
 
       if (!s) continue;
       const cfg = STRUCTURES[s.kind];
@@ -273,12 +433,12 @@ export class GameScene extends Phaser.Scene {
       // Fill by kind with alpha by status
       const alpha = s.status === "active" ? 1 : 0.45;
       this.bg.fillStyle(cfg.color, alpha);
-      this.bg.fillCircle(pos.x, pos.y, 28);
+      this.bg.fillCircle(pos.x, pos.y, r - 4);
 
       // Ring (level indicator)
       if (s.level > 1) {
         this.bg.lineStyle(3, 0xf5e8c8, 0.9);
-        this.bg.strokeCircle(pos.x, pos.y, 28);
+        this.bg.strokeCircle(pos.x, pos.y, r - 4);
       }
 
       // Progress arc while growing/mutating
@@ -289,16 +449,16 @@ export class GameScene extends Phaser.Scene {
         const end = -Math.PI / 2 + prog * Math.PI * 2;
         this.fx.lineStyle(4, 0xf5e8c8, 0.95);
         this.fx.beginPath();
-        this.fx.arc(pos.x, pos.y, 34, -Math.PI / 2, end, false);
+        this.fx.arc(pos.x, pos.y, r + 2, -Math.PI / 2, end, false);
         this.fx.strokePath();
       }
 
       // Pressure wave (active structures only, periodic pulse)
       if (s.status === "active" && cfg.basePressure > 0) {
         const phase = (this.state.time * 0.8 + s.id * 0.37) % 1;
-        const r = 28 + phase * 32;
+        const pr = r - 4 + phase * 32;
         this.fx.lineStyle(2, cfg.color, 1 - phase);
-        this.fx.strokeCircle(pos.x, pos.y, r);
+        this.fx.strokeCircle(pos.x, pos.y, pr);
       }
     }
   }
@@ -342,18 +502,10 @@ export class GameScene extends Phaser.Scene {
   // ---------- UI: build buttons ----------
 
   private createBuildButtons(): void {
-    const btnW = 280;
-    const btnH = 130;
-    const gap = 24;
-    const total = btnW * 4 + gap * 3;
-    const startX = (WIDTH - total) / 2;
-    const y = 560;
-
-    KINDS.forEach((kind, i) => {
-      const x = startX + i * (btnW + gap);
+    KINDS.forEach((kind) => {
       const bg = this.add.graphics();
       const title = this.add
-        .text(x + btnW / 2, y + 30, "", {
+        .text(0, 0, "", {
           fontSize: "32px",
           color: "#f8ecc8",
           fontStyle: "bold",
@@ -364,7 +516,7 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
       const detail = this.add
-        .text(x + btnW / 2, y + 88, "", {
+        .text(0, 0, "", {
           fontSize: "24px",
           color: "#f0e2bc",
           align: "center",
@@ -375,15 +527,10 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
       const container = this.add.container(0, 0, [bg, title, detail]);
-      const zone = this.add
-        .zone(x + btnW / 2, y + btnH / 2, btnW, btnH)
-        .setInteractive({ useHandCursor: true });
+      const zone = this.add.zone(0, 0, 10, 10).setInteractive({ useHandCursor: true });
       zone.on("pointerdown", () => this.onBuildTap(kind));
-      container.setData("x", x);
-      container.setData("y", y);
-      container.setData("w", btnW);
-      container.setData("h", btnH);
       this.buildBtns.push({ kind, container, title, detail, bg });
+      this.buildBtnZones.push(zone);
     });
   }
 
@@ -421,15 +568,9 @@ export class GameScene extends Phaser.Scene {
   // ---------- UI: pause/restart controls ----------
 
   private createControlButtons(): void {
-    const size = 64;
-    const gap = 12;
-    const restartX = WIDTH - size - 16;
-    const pauseX = restartX - size - gap;
-    const y = 16;
-
     const pauseBg = this.add.graphics().setDepth(15);
     const pauseIcon = this.add
-      .text(pauseX + size / 2, y + size / 2, "", {
+      .text(0, 0, "", {
         fontSize: "34px",
         color: "#f8ecc8",
         fontStyle: "bold",
@@ -438,7 +579,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(16);
     const pauseZone = this.add
-      .zone(pauseX + size / 2, y + size / 2, size, size)
+      .zone(0, 0, 10, 10)
       .setInteractive({ useHandCursor: true })
       .setDepth(16);
     pauseZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
@@ -446,13 +587,11 @@ export class GameScene extends Phaser.Scene {
       this.togglePause();
     });
     this.pauseBtn = { bg: pauseBg, icon: pauseIcon };
-    this.pauseBtn.bg.setData("x", pauseX);
-    this.pauseBtn.bg.setData("y", y);
-    this.pauseBtn.bg.setData("size", size);
+    this.pauseBtnZone = pauseZone;
 
     const restartBg = this.add.graphics().setDepth(15);
     const restartIcon = this.add
-      .text(restartX + size / 2, y + size / 2, "\u21BB", {
+      .text(0, 0, "\u21BB", {
         fontSize: "40px",
         color: "#f8ecc8",
         fontStyle: "bold",
@@ -461,7 +600,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(16);
     const restartZone = this.add
-      .zone(restartX + size / 2, y + size / 2, size, size)
+      .zone(0, 0, 10, 10)
       .setInteractive({ useHandCursor: true })
       .setDepth(16);
     restartZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
@@ -469,9 +608,7 @@ export class GameScene extends Phaser.Scene {
       this.restart();
     });
     this.restartBtn = { bg: restartBg, icon: restartIcon };
-    this.restartBtn.bg.setData("x", restartX);
-    this.restartBtn.bg.setData("y", y);
-    this.restartBtn.bg.setData("size", size);
+    this.restartBtnZone = restartZone;
   }
 
   private updateControlButtons(): void {
@@ -507,13 +644,13 @@ export class GameScene extends Phaser.Scene {
   // ---------- UI: slot interactions ----------
 
   private createSlotHitAreas(): void {
-    LEFT_SLOTS.forEach((pos, idx) => {
+    for (let idx = 0; idx < SLOT_COUNT; idx++) {
       const hit = this.add
-        .circle(pos.x, pos.y, 35, 0x000000, 0)
+        .circle(0, 0, 35, 0x000000, 0)
         .setInteractive({ useHandCursor: true });
       hit.on("pointerdown", () => this.onSlotTap(idx));
       this.slotHit.push(hit);
-    });
+    }
   }
 
   private onSlotTap(idx: number): void {
@@ -530,13 +667,12 @@ export class GameScene extends Phaser.Scene {
   // ---------- UI: upgrade button ----------
 
   private createBackgroundZone(): void {
-    const zone = this.add
-      .zone(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT)
-      .setInteractive();
+    const zone = this.add.zone(0, 0, 10, 10).setInteractive();
     zone.setDepth(-1000);
     zone.on("pointerdown", () => {
       this.selectedSlotIdx = null;
     });
+    this.bgZone = zone;
   }
 
   private createUpgradeButton(): void {
@@ -583,7 +719,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const cfg = STRUCTURES[s.kind];
-    const pos = LEFT_SLOTS[idx];
+    const pos = this.layout.leftSlots[idx];
 
     // Selection ring on the selected slot.
     const pulse = 0.7 + 0.3 * Math.sin(this.state.time * 6);
