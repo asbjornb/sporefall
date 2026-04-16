@@ -5,6 +5,8 @@ export const SLOT_COUNT = 4;
 export const START_NUTRIENTS = 40;
 export const BASE_INCOME = 2; // nutrients / second
 export const START_HP = 100;
+/** Seconds to show a "get ready" countdown before play begins. */
+export const START_COUNTDOWN = 3;
 
 export interface StructureConfig {
   cost: number;

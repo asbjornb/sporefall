@@ -30,6 +30,8 @@ export interface ColonyState {
 export interface GameState {
   /** Seconds elapsed. */
   time: number;
+  /** Seconds remaining before the match begins. 0 once play starts. */
+  countdown: number;
   /** Front position along the log, 0..1 (0 = left sclerotium, 1 = right). */
   front: number;
   left: ColonyState;

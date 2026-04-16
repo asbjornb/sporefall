@@ -35,6 +35,7 @@ export class SimpleAI {
 
   update(state: GameState, dt: number): void {
     if (state.winner) return;
+    if (state.countdown > 0) return;
     this.cooldown -= dt;
     if (!this.goal) this.goal = pickGoal(this.rng);
 

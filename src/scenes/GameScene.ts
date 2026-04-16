@@ -64,6 +64,7 @@ export class GameScene extends Phaser.Scene {
   private fx!: Phaser.GameObjects.Graphics;
   private topText!: Phaser.GameObjects.Text;
   private winText!: Phaser.GameObjects.Text;
+  private countdownText!: Phaser.GameObjects.Text;
   private buildBtns: {
     kind: StructureKind;
     container: Phaser.GameObjects.Container;
@@ -92,6 +93,17 @@ export class GameScene extends Phaser.Scene {
     this.winText = this.add
       .text(WIDTH / 2, HEIGHT / 2, "", {
         fontSize: "76px",
+        color: "#f8e8c0",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setDepth(20);
+
+    this.countdownText = this.add
+      .text(WIDTH / 2, HEIGHT / 2, "", {
+        fontSize: "180px",
         color: "#f8e8c0",
         fontStyle: "bold",
         fontFamily: "system-ui, sans-serif",
@@ -131,6 +143,7 @@ export class GameScene extends Phaser.Scene {
     this.updateHud();
     this.updateBuildButtons();
     this.updateWinBanner();
+    this.updateCountdown();
   }
 
   private drawLog(): void {
@@ -276,6 +289,20 @@ export class GameScene extends Phaser.Scene {
     }
     const msg = this.state.winner === "left" ? "VICTORY" : "DEFEAT";
     this.winText.setText(`${msg}\ntap to restart`);
+  }
+
+  private updateCountdown(): void {
+    if (this.state.winner) {
+      this.countdownText.setText("");
+      return;
+    }
+    if (this.state.countdown > 0) {
+      this.countdownText.setText(String(Math.ceil(this.state.countdown)));
+    } else if (this.state.time < 0.6) {
+      this.countdownText.setText("GO!");
+    } else {
+      this.countdownText.setText("");
+    }
   }
 
   // ---------- UI: build buttons ----------
