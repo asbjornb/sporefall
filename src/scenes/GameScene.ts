@@ -16,8 +16,8 @@ const WIDTH = 1280;
 const HEIGHT = 720;
 const LOG_LEFT = 80;
 const LOG_RIGHT = 1200;
-const LOG_TOP = 260;
-const LOG_H = 80;
+const LOG_TOP = 110;
+const LOG_H = 260;
 const LOG_BOTTOM = LOG_TOP + LOG_H;
 const LOG_W = LOG_RIGHT - LOG_LEFT;
 
@@ -40,14 +40,14 @@ interface SlotSpec {
 
 function slotPositions(side: Side): SlotSpec[] {
   // 2x2 grid just inward from each sclerotium.
-  const baseX = side === "left" ? 170 : 1110;
-  const dx = side === "left" ? 70 : -70;
+  const baseX = side === "left" ? 180 : 1100;
+  const dx = side === "left" ? 80 : -80;
   const positions: SlotSpec[] = [];
   for (let row = 0; row < 2; row++) {
     for (let col = 0; col < 2; col++) {
       positions.push({
         x: baseX + dx * col,
-        y: LOG_BOTTOM + 70 + row * 70,
+        y: LOG_BOTTOM + 55 + row * 70,
       });
     }
   }
@@ -83,18 +83,19 @@ export class GameScene extends Phaser.Scene {
     this.bg = this.add.graphics();
     this.fx = this.add.graphics();
 
-    this.topText = this.add.text(20, 14, "", {
-      fontSize: "20px",
+    this.topText = this.add.text(24, 14, "", {
+      fontSize: "26px",
       color: "#e8d7b6",
       fontFamily: "system-ui, sans-serif",
     });
 
     this.winText = this.add
       .text(WIDTH / 2, HEIGHT / 2, "", {
-        fontSize: "64px",
+        fontSize: "76px",
         color: "#f8e8c0",
         fontStyle: "bold",
         fontFamily: "system-ui, sans-serif",
+        align: "center",
       })
       .setOrigin(0.5)
       .setDepth(20);
@@ -103,6 +104,10 @@ export class GameScene extends Phaser.Scene {
     this.createSlotHitAreas();
 
     this.input.keyboard?.on("keydown-R", () => this.restart());
+    // Any tap/click after the game is over restarts — mobile-friendly.
+    this.input.on("pointerdown", () => {
+      if (this.state.winner) this.restart();
+    });
   }
 
   update(_time: number, deltaMs: number): void {
@@ -158,7 +163,7 @@ export class GameScene extends Phaser.Scene {
     // Contested seam — silvery shimmer
     const pulse = 0.55 + 0.25 * Math.sin(this.state.time * 6);
     this.fx.fillStyle(0xcfd6ea, pulse);
-    this.fx.fillRect(frontX - 3, LOG_TOP - 2, 6, LOG_H + 4);
+    this.fx.fillRect(frontX - 4, LOG_TOP - 4, 8, LOG_H + 8);
 
     // Net pressure glow
     const pL = pressureOf(this.state, "left");
@@ -167,9 +172,9 @@ export class GameScene extends Phaser.Scene {
     if (Math.abs(net) > 0.1) {
       const tint = net > 0 ? LEFT_TINT : RIGHT_TINT;
       const dir = net > 0 ? 1 : -1;
-      const glowX = frontX + dir * 24;
+      const glowX = frontX + dir * 36;
       this.fx.fillStyle(tint, 0.25);
-      this.fx.fillCircle(glowX, LOG_TOP + LOG_H / 2, 30);
+      this.fx.fillCircle(glowX, LOG_TOP + LOG_H / 2, 48);
     }
   }
 
@@ -183,18 +188,18 @@ export class GameScene extends Phaser.Scene {
     const color = side === "left" ? LEFT_TINT : RIGHT_TINT;
     // outer glow
     this.bg.fillStyle(color, 0.25);
-    this.bg.fillCircle(x, y, 48);
+    this.bg.fillCircle(x, y, 64);
     // core
     this.bg.fillStyle(color, 1);
-    this.bg.fillCircle(x, y, 28);
+    this.bg.fillCircle(x, y, 38);
     this.bg.fillStyle(0xf5e8c8, 0.8);
-    this.bg.fillCircle(x, y, 10);
+    this.bg.fillCircle(x, y, 14);
 
-    // HP bar above
-    const hpW = 100;
-    const hpH = 10;
+    // HP bar above the log so it never sits on bark
+    const hpW = 140;
+    const hpH = 14;
     const hpX = x - hpW / 2;
-    const hpY = y - 70;
+    const hpY = LOG_TOP - 26;
     this.fx.fillStyle(0x000000, 0.5);
     this.fx.fillRect(hpX - 2, hpY - 2, hpW + 4, hpH + 4);
     this.fx.fillStyle(0x3a1a12, 1);
@@ -213,7 +218,7 @@ export class GameScene extends Phaser.Scene {
 
       // Slot frame
       this.bg.lineStyle(2, 0x6a4a30, 0.6);
-      this.bg.strokeCircle(pos.x, pos.y, 26);
+      this.bg.strokeCircle(pos.x, pos.y, 32);
 
       if (!s) continue;
       const cfg = STRUCTURES[s.kind];
@@ -221,12 +226,12 @@ export class GameScene extends Phaser.Scene {
       // Fill by kind with alpha by status
       const alpha = s.status === "active" ? 1 : 0.45;
       this.bg.fillStyle(cfg.color, alpha);
-      this.bg.fillCircle(pos.x, pos.y, 22);
+      this.bg.fillCircle(pos.x, pos.y, 28);
 
       // Ring (level indicator)
       if (s.level > 1) {
         this.bg.lineStyle(3, 0xf5e8c8, 0.9);
-        this.bg.strokeCircle(pos.x, pos.y, 22);
+        this.bg.strokeCircle(pos.x, pos.y, 28);
       }
 
       // Progress arc while growing/mutating
@@ -237,14 +242,14 @@ export class GameScene extends Phaser.Scene {
         const end = -Math.PI / 2 + prog * Math.PI * 2;
         this.fx.lineStyle(4, 0xf5e8c8, 0.95);
         this.fx.beginPath();
-        this.fx.arc(pos.x, pos.y, 28, -Math.PI / 2, end, false);
+        this.fx.arc(pos.x, pos.y, 34, -Math.PI / 2, end, false);
         this.fx.strokePath();
       }
 
       // Pressure wave (active structures only, periodic pulse)
       if (s.status === "active" && cfg.basePressure > 0) {
         const phase = (this.state.time * 0.8 + s.id * 0.37) % 1;
-        const r = 22 + phase * 28;
+        const r = 28 + phase * 32;
         this.fx.lineStyle(2, cfg.color, 1 - phase);
         this.fx.strokeCircle(pos.x, pos.y, r);
       }
@@ -270,25 +275,25 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const msg = this.state.winner === "left" ? "VICTORY" : "DEFEAT";
-    this.winText.setText(`${msg}\npress R to restart`);
+    this.winText.setText(`${msg}\ntap to restart`);
   }
 
   // ---------- UI: build buttons ----------
 
   private createBuildButtons(): void {
-    const btnW = 240;
-    const btnH = 100;
-    const gap = 20;
+    const btnW = 280;
+    const btnH = 130;
+    const gap = 24;
     const total = btnW * 4 + gap * 3;
     const startX = (WIDTH - total) / 2;
-    const y = 580;
+    const y = 560;
 
     KINDS.forEach((kind, i) => {
       const x = startX + i * (btnW + gap);
       const bg = this.add.graphics();
       const label = this.add
         .text(x + btnW / 2, y + btnH / 2, "", {
-          fontSize: "18px",
+          fontSize: "22px",
           color: "#f5e8c8",
           align: "center",
           fontFamily: "system-ui, sans-serif",
@@ -341,7 +346,7 @@ export class GameScene extends Phaser.Scene {
   private createSlotHitAreas(): void {
     LEFT_SLOTS.forEach((pos, idx) => {
       const hit = this.add
-        .circle(pos.x, pos.y, 28, 0x000000, 0)
+        .circle(pos.x, pos.y, 34, 0x000000, 0)
         .setInteractive({ useHandCursor: true });
       hit.on("pointerdown", () => this.onSlotTap(idx));
       this.slotHit.push(hit);
