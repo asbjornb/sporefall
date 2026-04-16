@@ -53,6 +53,7 @@ interface ControlBtnRect {
 interface Layout {
   W: number;
   H: number;
+  uiScale: number;
   logLeft: number;
   logRight: number;
   logTop: number;
@@ -81,25 +82,31 @@ function desaturate(hex: number, amount: number): number {
 }
 
 function computeLayout(W: number, H: number): Layout {
-  const topBarH = 80;
-  const bottomPad = 14;
+  // Uniform UI scale relative to the original 1280x720 design. On a phone in
+  // landscape (~800x380) this lands around 0.5, which matches what the old FIT
+  // scaling used to render — keeping fonts/buttons/slots readable but compact.
+  const uiScale = Math.max(0.55, Math.min(1.2, Math.min(W / 1280, H / 720)));
+  const s = (n: number) => Math.round(n * uiScale);
+
+  const topBarH = s(80);
+  const bottomPad = s(14);
 
   // Slots region (2 rows) sits near the bottom, where the build bar used to be.
-  const slotRadius = 32;
-  const slotRowGap = 70;
+  const slotRadius = s(32);
+  const slotRowGap = s(70);
   const slotAreaBottom = H - bottomPad;
   const slotAreaTop = slotAreaBottom - slotRowGap * 2 + (slotRowGap - slotRadius * 2) / 2;
-  const row0Y = slotAreaTop + slotRadius + 4;
+  const row0Y = slotAreaTop + slotRadius + s(4);
   const row1Y = row0Y + slotRowGap;
 
   // Build buttons stacked vertically along the left edge, aligned with the log.
-  const buildBarTop = topBarH + 30;
-  const buildBarBottom = slotAreaTop - 14;
+  const buildBarTop = topBarH + s(30);
+  const buildBarBottom = slotAreaTop - s(14);
   const buildBarH = buildBarBottom - buildBarTop;
-  const btnGap = 16;
-  const btnH = Math.max(80, Math.min(150, Math.floor((buildBarH - btnGap * 3) / 4)));
-  const btnW = Math.max(160, Math.min(220, Math.round(W * 0.14)));
-  const leftPad = 14;
+  const btnGap = s(16);
+  const btnH = Math.max(s(64), Math.min(s(150), Math.floor((buildBarH - btnGap * 3) / 4)));
+  const btnW = Math.max(s(140), Math.min(s(220), Math.round(W * 0.14)));
+  const leftPad = s(14);
   const buildBarX = leftPad;
   const buildBtns: BuildBtnRect[] = [];
   for (let i = 0; i < 4; i++) {
@@ -112,22 +119,22 @@ function computeLayout(W: number, H: number): Layout {
   }
 
   // Log spans between the HUD strip and the slots, starting right of the build column.
-  const heartRadius = Math.max(34, Math.min(48, Math.round(H * 0.055)));
-  const rightMargin = Math.max(56, Math.min(120, Math.round(W * 0.05)));
-  const logLeft = buildBarX + btnW + 20;
+  const heartRadius = Math.max(s(28), Math.min(s(48), Math.round(H * 0.055)));
+  const rightMargin = Math.max(s(48), Math.min(s(120), Math.round(W * 0.05)));
+  const logLeft = buildBarX + btnW + s(20);
   const logRight = W - rightMargin;
   const logTop = buildBarTop;
   const logBottom = buildBarBottom;
   const logW = logRight - logLeft;
-  const logH = Math.max(120, logBottom - logTop);
+  const logH = Math.max(s(120), logBottom - logTop);
 
   const leftHeartX = logLeft + heartRadius * 0.55;
   const rightHeartX = logRight - heartRadius * 0.55;
   const heartY = logTop + logH / 2;
 
   // Slot columns start one spacing inward from each sclerotium.
-  const innerHalf = Math.max(0, (rightHeartX - leftHeartX) / 2 - 40);
-  const slotSpacing = Math.max(70, Math.min(110, innerHalf / 5));
+  const innerHalf = Math.max(0, (rightHeartX - leftHeartX) / 2 - s(40));
+  const slotSpacing = Math.max(s(60), Math.min(s(110), innerHalf / 5));
   const leftSlots: SlotSpec[] = [];
   const rightSlots: SlotSpec[] = [];
   for (let row = 0; row < 2; row++) {
@@ -139,9 +146,9 @@ function computeLayout(W: number, H: number): Layout {
   }
 
   // Top-right control buttons.
-  const ctrlSize = 60;
-  const ctrlGap = 12;
-  const ctrlMargin = 14;
+  const ctrlSize = s(60);
+  const ctrlGap = s(12);
+  const ctrlMargin = s(14);
   const restartBtn: ControlBtnRect = {
     x: W - ctrlSize - ctrlMargin,
     y: ctrlMargin,
@@ -156,6 +163,7 @@ function computeLayout(W: number, H: number): Layout {
   return {
     W,
     H,
+    uiScale,
     logLeft,
     logRight,
     logTop,
@@ -294,12 +302,25 @@ export class GameScene extends Phaser.Scene {
 
   private applyLayout(): void {
     const L = this.layout;
+    const sc = L.uiScale;
+    const px = (n: number) => `${Math.max(10, Math.round(n * sc))}px`;
+
+    this.topText.setPosition(Math.round(24 * sc), Math.round(14 * sc));
+    this.topText.setFontSize(px(26));
+
     this.winText.setPosition(L.W / 2, L.H / 2);
+    this.winText.setFontSize(px(76));
+
     this.countdownText.setPosition(L.W / 2, L.H / 2);
-    this.pausedText.setPosition(L.W / 2, L.H / 2 - 140);
+    this.countdownText.setFontSize(px(180));
+
+    this.pausedText.setPosition(L.W / 2, L.H / 2 - Math.round(140 * sc));
+    this.pausedText.setFontSize(px(64));
+
     if (this.rpsLegend) {
       const rb = L.restartBtn;
-      this.rpsLegend.setPosition(rb.x + rb.size, rb.y + rb.size + 6);
+      this.rpsLegend.setPosition(rb.x + rb.size, rb.y + rb.size + Math.round(6 * sc));
+      this.rpsLegend.setFontSize(px(14));
     }
 
     this.bgZone.setPosition(L.W / 2, L.H / 2).setSize(L.W, L.H);
@@ -311,7 +332,9 @@ export class GameScene extends Phaser.Scene {
       entry.container.setData("w", rect.w);
       entry.container.setData("h", rect.h);
       entry.title.setPosition(rect.x + rect.w / 2, rect.y + rect.h * 0.25);
+      entry.title.setFontSize(px(22));
       entry.detail.setPosition(rect.x + rect.w / 2, rect.y + rect.h * 0.68);
+      entry.detail.setFontSize(px(18));
       const zone = this.buildBtnZones[i];
       zone.setPosition(rect.x + rect.w / 2, rect.y + rect.h / 2);
       zone.setSize(rect.w, rect.h);
@@ -320,11 +343,13 @@ export class GameScene extends Phaser.Scene {
     this.slotHit.forEach((hit, i) => {
       const pos = L.leftSlots[i];
       hit.setPosition(pos.x, pos.y);
+      hit.setRadius(Math.max(18, L.slotRadius + Math.round(3 * sc)));
     });
 
     const pb = L.pauseBtn;
     this.pauseBtn.bg.setData("x", pb.x).setData("y", pb.y).setData("size", pb.size);
     this.pauseBtn.icon.setPosition(pb.x + pb.size / 2, pb.y + pb.size / 2);
+    this.pauseBtn.icon.setFontSize(px(34));
     this.pauseBtnZone
       .setPosition(pb.x + pb.size / 2, pb.y + pb.size / 2)
       .setSize(pb.size, pb.size);
@@ -332,9 +357,12 @@ export class GameScene extends Phaser.Scene {
     const rb = L.restartBtn;
     this.restartBtn.bg.setData("x", rb.x).setData("y", rb.y).setData("size", rb.size);
     this.restartBtn.icon.setPosition(rb.x + rb.size / 2, rb.y + rb.size / 2);
+    this.restartBtn.icon.setFontSize(px(40));
     this.restartBtnZone
       .setPosition(rb.x + rb.size / 2, rb.y + rb.size / 2)
       .setSize(rb.size, rb.size);
+
+    this.upgradeBtnLabel.setFontSize(px(18));
   }
 
   update(_time: number, deltaMs: number): void {
@@ -494,10 +522,11 @@ export class GameScene extends Phaser.Scene {
     this.bg.fillCircle(x, y, r * 0.38);
 
     // HP bar above the log so it never sits on bark
-    const hpW = 140;
-    const hpH = 14;
+    const sc = this.layout.uiScale;
+    const hpW = Math.round(140 * sc);
+    const hpH = Math.max(6, Math.round(14 * sc));
     const hpX = x - hpW / 2;
-    const hpY = this.layout.logTop - 26;
+    const hpY = this.layout.logTop - Math.round(26 * sc);
     this.fx.fillStyle(0x000000, 0.5);
     this.fx.fillRect(hpX - 2, hpY - 2, hpW + 4, hpH + 4);
     this.fx.fillStyle(0x3a1a12, 1);
@@ -951,15 +980,16 @@ export class GameScene extends Phaser.Scene {
     const pos = this.layout.leftSlots[idx];
 
     // Selection ring on the selected slot.
+    const sc = this.layout.uiScale;
     const pulse = 0.7 + 0.3 * Math.sin(this.state.time * 6);
     this.upgradeBtnBg.lineStyle(3, 0xfff2c0, pulse);
-    this.upgradeBtnBg.strokeCircle(pos.x, pos.y, 38);
+    this.upgradeBtnBg.strokeCircle(pos.x, pos.y, this.layout.slotRadius + Math.round(6 * sc));
 
     // Button floats above the slot. Clamp to stay on screen.
-    const btnW = 170;
-    const btnH = 56;
+    const btnW = Math.round(170 * sc);
+    const btnH = Math.round(56 * sc);
     const btnX = pos.x;
-    const btnY = Math.max(btnH / 2 + 4, pos.y - 68);
+    const btnY = Math.max(btnH / 2 + 4, pos.y - Math.round(68 * sc));
 
     const can = canMutate(this.state, "left", idx);
     const isBusy = s.status !== "active";
