@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1b120a" />
+    <title>Sporefall</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #1b120a;
+        overflow: hidden;
+        color: #e8d7b6;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #game {
+        width: 100vw;
+        height: 100vh;
+      }
+      #rotate {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: #1b120a;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        font-size: 1.1rem;
+        padding: 2rem;
+        z-index: 10;
+      }
+      @media (orientation: portrait) and (max-width: 900px) {
+        #rotate {
+          display: flex;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="rotate">Please rotate your device to landscape.</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
