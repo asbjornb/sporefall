@@ -3,6 +3,7 @@ import {
   FRONT_SPEED,
   SCLEROTIUM_DAMAGE,
   SLOT_COUNT,
+  START_COUNTDOWN,
   STRUCTURES,
   START_HP,
   START_NUTRIENTS,
@@ -30,6 +31,7 @@ function makeColony(side: Side): ColonyState {
 export function createGameState(): GameState {
   return {
     time: 0,
+    countdown: START_COUNTDOWN,
     front: 0.5,
     left: makeColony("left"),
     right: makeColony("right"),
@@ -64,6 +66,7 @@ export function canBuild(
   kind: StructureKind,
 ): boolean {
   if (state.winner) return false;
+  if (state.countdown > 0) return false;
   const colony = state[side];
   const cfg = STRUCTURES[kind];
   if (colony.nutrients < cfg.cost) return false;
@@ -98,6 +101,7 @@ export function canMutate(
   slotIdx: number,
 ): boolean {
   if (state.winner) return false;
+  if (state.countdown > 0) return false;
   const colony = state[side];
   const s = colony.slots[slotIdx];
   if (!s || s.status !== "active") return false;
@@ -148,6 +152,10 @@ function advanceStructures(colony: ColonyState, dt: number): void {
 /** Advance the simulation by dt seconds. */
 export function step(state: GameState, dt: number): void {
   if (state.winner) return;
+  if (state.countdown > 0) {
+    state.countdown = Math.max(0, state.countdown - dt);
+    return;
+  }
   state.time += dt;
 
   advanceStructures(state.left, dt);
