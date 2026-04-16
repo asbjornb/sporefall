@@ -70,6 +70,7 @@ export function canBuild(
   const colony = state[side];
   const cfg = STRUCTURES[kind];
   if (colony.nutrients < cfg.cost) return false;
+  if (colony.slots.some((s) => s && s.status === "growing")) return false;
   return colony.slots.some((s) => s === null);
 }
 
