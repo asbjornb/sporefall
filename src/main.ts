@@ -103,15 +103,7 @@ const applyFsBtnVisibility = (): void => {
 };
 
 window.addEventListener("sporefall:phase", (e) => {
-  const next = (e as CustomEvent<Phase>).detail;
-  const wasMenu = phase === "menu";
-  phase = next;
-  // Spread tap: try fullscreen+landscape on the way into the match. The browser
-  // requires this to happen inside the originating user gesture, but the scene
-  // dispatches synchronously from the pointer handler so we're still in scope.
-  if (wasMenu && next === "playing") {
-    void enterFullscreen().finally(applyFsBtnVisibility);
-  }
+  phase = (e as CustomEvent<Phase>).detail;
   applyFsBtnVisibility();
 });
 
@@ -121,3 +113,15 @@ window.addEventListener("orientationchange", applyFsBtnVisibility);
 screen.orientation?.addEventListener?.("change", applyFsBtnVisibility);
 
 applyFsBtnVisibility();
+
+// The Spread CTA is a native button rather than a Phaser GameObject so the
+// fullscreen / orientation-lock request fires inside the real user gesture.
+// Phaser queues pointer events until the next scene update, which puts the
+// would-be fullscreen call outside the gesture and the browser rejects it.
+const spreadBtn = document.getElementById("spread-btn") as HTMLButtonElement | null;
+if (spreadBtn) {
+  spreadBtn.addEventListener("click", () => {
+    void enterFullscreen();
+    window.dispatchEvent(new CustomEvent("sporefall:start"));
+  });
+}

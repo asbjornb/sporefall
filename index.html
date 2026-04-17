@@ -51,6 +51,32 @@
       #fullscreen-btn:hover {
         background: rgba(27, 18, 10, 0.8);
       }
+      #spread-btn {
+        position: fixed;
+        display: none;
+        box-sizing: border-box;
+        background: rgba(58, 42, 24, 0.95);
+        color: #f8ecc8;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-weight: bold;
+        border: 3px solid rgba(155, 176, 74, 0.85);
+        border-radius: 14px;
+        cursor: pointer;
+        padding: 0;
+        z-index: 27;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #spread-btn.visible {
+        display: block;
+        animation: spreadPulse 2.8s ease-in-out infinite;
+      }
+      #spread-btn:hover {
+        background: rgba(74, 54, 32, 0.95);
+      }
+      @keyframes spreadPulse {
+        0%, 100% { border-color: rgba(155, 176, 74, 0.55); }
+        50%      { border-color: rgba(155, 176, 74, 1); }
+      }
       #mobile-hint {
         display: none;
         position: fixed;
@@ -88,6 +114,7 @@
   <body>
     <div id="game"></div>
     <button id="fullscreen-btn" type="button" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
+    <button id="spread-btn" type="button">Spread</button>
     <div id="mobile-hint">Plays best fullscreen in landscape.</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
