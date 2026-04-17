@@ -311,11 +311,10 @@ export class GameScene extends Phaser.Scene {
   private paused = false;
   private phase: Phase = "menu";
   private titleText!: Phaser.GameObjects.Text;
-  private spreadBtn!: {
-    bg: Phaser.GameObjects.Graphics;
-    label: Phaser.GameObjects.Text;
-  };
-  private spreadBtnZone!: Phaser.GameObjects.Zone;
+  /** Native HTML <button> — sits above the Phaser canvas so fullscreen
+   * requests fire inside the real user gesture (Phaser queues pointer events
+   * which puts them outside the gesture by the time the handler runs). */
+  private spreadEl: HTMLButtonElement | null = null;
   private bg!: Phaser.GameObjects.Graphics;
   private fx!: Phaser.GameObjects.Graphics;
   private topText!: Phaser.GameObjects.Text;
@@ -595,13 +594,13 @@ export class GameScene extends Phaser.Scene {
       this.subtitleText.setPosition(L.titleX, L.subtitleY);
       this.subtitleText.setFontSize(px(20));
     }
-    if (this.spreadBtn) {
+    if (this.spreadEl) {
       const sb = L.spreadBtn;
-      this.spreadBtn.label.setPosition(sb.x + sb.w / 2, sb.y + sb.h / 2);
-      this.spreadBtn.label.setFontSize(px(36));
-      this.spreadBtnZone
-        .setPosition(sb.x + sb.w / 2, sb.y + sb.h / 2)
-        .setSize(sb.w, sb.h);
+      this.spreadEl.style.left = `${sb.x}px`;
+      this.spreadEl.style.top = `${sb.y}px`;
+      this.spreadEl.style.width = `${sb.w}px`;
+      this.spreadEl.style.height = `${sb.h}px`;
+      this.spreadEl.style.fontSize = `${Math.max(18, Math.round(36 * sc))}px`;
     }
   }
 
@@ -1339,30 +1338,15 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(26);
 
-    const bg = this.add.graphics().setDepth(26);
-    const label = this.add
-      .text(0, 0, "Spread", {
-        fontSize: "36px",
-        color: "#f8ecc8",
-        fontStyle: "bold",
-        fontFamily: "system-ui, sans-serif",
-        align: "center",
-      })
-      .setOrigin(0.5)
-      .setDepth(27);
-    const zone = this.add
-      .zone(0, 0, 10, 10)
-      .setInteractive({ useHandCursor: true })
-      .setDepth(27);
-    zone.on(
-      "pointerdown",
-      (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
-        e.stopPropagation?.();
-        this.startPlay();
-      },
-    );
-    this.spreadBtn = { bg, label };
-    this.spreadBtnZone = zone;
+    // Native button: fullscreen/orientation requests need a live user gesture,
+    // so we let the browser dispatch the click directly rather than routing
+    // through Phaser's queued input (see spreadEl comment for details).
+    this.spreadEl = document.getElementById("spread-btn") as HTMLButtonElement | null;
+    const onStart = (): void => this.startPlay();
+    window.addEventListener("sporefall:start", onStart);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener("sporefall:start", onStart);
+    });
   }
 
   private updateMenuOverlay(): void {
@@ -1370,15 +1354,12 @@ export class GameScene extends Phaser.Scene {
     this.menuBg.setVisible(show);
     this.titleText.setVisible(show);
     this.subtitleText.setVisible(show);
-    this.spreadBtn.label.setVisible(show);
+    if (this.spreadEl) {
+      this.spreadEl.classList.toggle("visible", show);
+    }
     if (!show) {
       this.menuBg.clear();
-      this.spreadBtn.bg.clear();
-      if (this.spreadBtnZone.input?.enabled) this.spreadBtnZone.disableInteractive();
       return;
-    }
-    if (!this.spreadBtnZone.input?.enabled) {
-      this.spreadBtnZone.setInteractive({ useHandCursor: true });
     }
     const L = this.layout;
 
@@ -1391,14 +1372,6 @@ export class GameScene extends Phaser.Scene {
     this.menuBg.fillRoundedRect(panel.x, panel.y, panel.w, panel.h, 16);
     this.menuBg.lineStyle(2, 0xf5e8c8, 0.55);
     this.menuBg.strokeRoundedRect(panel.x, panel.y, panel.w, panel.h, 16);
-
-    const rect = L.spreadBtn;
-    const pulse = 0.7 + 0.3 * Math.sin(this.state.time * 2);
-    this.spreadBtn.bg.clear();
-    this.spreadBtn.bg.fillStyle(0x3a2a18, 0.95);
-    this.spreadBtn.bg.fillRoundedRect(rect.x, rect.y, rect.w, rect.h, 14);
-    this.spreadBtn.bg.lineStyle(3, LEFT_TINT, pulse);
-    this.spreadBtn.bg.strokeRoundedRect(rect.x, rect.y, rect.w, rect.h, 14);
   }
 
   private startPlay(): void {
