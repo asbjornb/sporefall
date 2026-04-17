@@ -709,20 +709,79 @@ export class GameScene extends Phaser.Scene {
 
   private drawLog(): void {
     const L = this.layout;
+
+    // Soft elliptical vignette behind the log — stacked translucent ellipses
+    // fake a radial falloff, since Phaser Graphics has no gradient fill.
+    const cx = L.logLeft + L.logW / 2;
+    const cy = L.logTop + L.logH / 2;
+    for (let i = 0; i < 4; i++) {
+      const t = 1 - i / 4;
+      this.bg.fillStyle(0x2a1a0e, 0.06 * t);
+      this.bg.fillEllipse(cx, cy, L.logW * (1.4 - i * 0.12), L.logH * (2.0 - i * 0.18));
+    }
+
     // Log body (bark)
     this.bg.fillStyle(LOG_BARK, 1);
     this.bg.fillRoundedRect(L.logLeft - 10, L.logTop - 10, L.logW + 20, L.logH + 20, 16);
     this.bg.fillStyle(LOG_BODY, 1);
     this.bg.fillRoundedRect(L.logLeft, L.logTop, L.logW, L.logH, 12);
 
-    // Grain lines
-    this.bg.lineStyle(1, 0x2a1a0a, 0.4);
-    for (let i = 1; i < 5; i++) {
-      const y = L.logTop + (L.logH * i) / 5;
+    // Inner top-edge highlight — thin sunlit band along the top of the log.
+    this.bg.fillStyle(0x7a5232, 0.35);
+    this.bg.fillRoundedRect(L.logLeft + 4, L.logTop + 3, L.logW - 8, 4, 2);
+    // Inner bottom-edge shadow — rim of moisture / shade.
+    this.bg.fillStyle(0x1a0e06, 0.35);
+    this.bg.fillRoundedRect(L.logLeft + 4, L.logTop + L.logH - 6, L.logW - 8, 3, 2);
+
+    // Grain lines — wavy, staggered, varying alpha for a lived-in feel.
+    const grainLines = 7;
+    for (let i = 1; i < grainLines; i++) {
+      const yBase = L.logTop + (L.logH * i) / grainLines;
+      const amp = 1.5 + ((i * 37) % 4);
+      const period = 60 + ((i * 53) % 40);
+      const phase = (i * 1.7) % (Math.PI * 2);
+      const alpha = 0.25 + 0.15 * ((i * 31) % 4) / 3;
+      this.bg.lineStyle(1, 0x2a1a0a, alpha);
       this.bg.beginPath();
-      this.bg.moveTo(L.logLeft + 8, y);
-      this.bg.lineTo(L.logRight - 8, y);
+      const steps = Math.max(12, Math.round(L.logW / 18));
+      for (let s = 0; s <= steps; s++) {
+        const x = L.logLeft + 8 + ((L.logW - 16) * s) / steps;
+        const y = yBase + Math.sin(phase + (x / period) * Math.PI * 2) * amp;
+        if (s === 0) this.bg.moveTo(x, y);
+        else this.bg.lineTo(x, y);
+      }
       this.bg.strokePath();
+    }
+
+    // Knots — a few dark elliptical eyes along the bark at stable positions.
+    const knotCount = 3 + Math.floor(L.logW / 420);
+    for (let k = 0; k < knotCount; k++) {
+      const fx = 0.12 + (k * 0.2743) % 0.76; // evenly-ish distributed
+      const fy = 0.25 + ((k * 0.5119) % 1) * 0.5;
+      const x = L.logLeft + L.logW * fx;
+      const y = L.logTop + L.logH * fy;
+      const rw = 6 + (k % 3) * 2;
+      const rh = 4 + (k % 2) * 2;
+      this.bg.fillStyle(0x1a0e06, 0.8);
+      this.bg.fillEllipse(x, y, rw * 2.2, rh * 2.2);
+      this.bg.fillStyle(0x0e0704, 1);
+      this.bg.fillEllipse(x, y, rw * 1.4, rh * 1.4);
+      this.bg.fillStyle(0x3a2412, 1);
+      this.bg.fillEllipse(x - rw * 0.15, y - rh * 0.2, rw * 0.5, rh * 0.4);
+    }
+
+    // Moss tufts along the top edge — soft clumps of cool green.
+    const mossCount = 4 + Math.floor(L.logW / 360);
+    for (let m = 0; m < mossCount; m++) {
+      const fx = 0.08 + ((m * 0.1913) + 0.07) % 0.88;
+      const x = L.logLeft + L.logW * fx;
+      const y = L.logTop + 2 + ((m * 5) % 3);
+      this.bg.fillStyle(0x3d5a24, 0.75);
+      this.bg.fillEllipse(x, y, 26 + (m % 3) * 6, 6);
+      this.bg.fillStyle(0x6b8a3a, 0.7);
+      this.bg.fillEllipse(x - 3, y - 1, 18 + (m % 2) * 4, 4);
+      this.bg.fillStyle(0x8da84a, 0.55);
+      this.bg.fillEllipse(x + 2, y - 2, 10, 3);
     }
 
     const frontX = L.logLeft + L.logW * this.state.front;
@@ -734,6 +793,17 @@ export class GameScene extends Phaser.Scene {
     // Right colony color flow
     this.bg.fillStyle(RIGHT_TINT, 0.45);
     this.bg.fillRect(frontX, L.logTop, L.logRight - frontX, L.logH);
+
+    // Feathered seam — stacked translucent bands blend the hard split into a
+    // soft territorial gradient on each side of the front.
+    for (let i = 1; i <= 4; i++) {
+      const step = i * 5;
+      const a = 0.09 / i;
+      this.fx.fillStyle(LEFT_TINT, a);
+      this.fx.fillRect(frontX, L.logTop, step, L.logH);
+      this.fx.fillStyle(RIGHT_TINT, a);
+      this.fx.fillRect(frontX - step, L.logTop, step, L.logH);
+    }
 
     // Contested seam — silvery shimmer. Widens during any active fruiting burst.
     const burstingSides = this.activeBurstStrength();
@@ -790,18 +860,76 @@ export class GameScene extends Phaser.Scene {
     const colony = this.state[side];
     const color = side === "left" ? LEFT_TINT : RIGHT_TINT;
     const r = this.layout.heartRadius;
-    // In the pre-game menu, the sclerotia breathe — a slow glow oscillation
-    // makes the world feel alive without doing anything gameplay-affecting.
-    const breath =
-      this.phase === "menu" ? 1 + 0.06 * Math.sin(this.state.time * 1.6) : 1;
-    // outer glow
+    // Continuous breathing pulse — subtler during play, stronger in menu so
+    // the idle state feels alive.
+    const breathAmp = this.phase === "menu" ? 0.07 : 0.035;
+    const breath = 1 + breathAmp * Math.sin(this.state.time * 1.6 + (side === "left" ? 0 : Math.PI / 2));
+
+    // Radiating tendrils — fine mycelial threads fanning from the heart into
+    // its half of the log. Deterministic angles keyed off a per-side seed so
+    // they don't jitter between frames, but lengths breathe with the pulse.
+    const seed = side === "left" ? 0.13 : 0.41;
+    const inward = side === "left" ? 1 : -1;
+    const tendrilCount = 9;
+    this.bg.lineStyle(1, color, 0.55);
+    for (let i = 0; i < tendrilCount; i++) {
+      const ang = (-Math.PI / 2) + (i / (tendrilCount - 1) - 0.5) * Math.PI * 1.4;
+      const dirAng = ang * inward + (inward < 0 ? Math.PI : 0);
+      const jitter = Math.sin((i * 1.7 + seed * 10) + this.state.time * 0.8) * 0.1;
+      const theta = dirAng + jitter;
+      const len = r * (2.2 + 0.6 * Math.sin(i * 2.1 + this.state.time * 1.2 + seed * 6));
+      const steps = 6;
+      this.bg.beginPath();
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const curve = Math.sin(t * Math.PI) * r * 0.25 * Math.sin(i * 1.3 + seed * 5);
+        const px = x + Math.cos(theta) * len * t + Math.cos(theta + Math.PI / 2) * curve;
+        const py = y + Math.sin(theta) * len * t + Math.sin(theta + Math.PI / 2) * curve;
+        if (s === 0) this.bg.moveTo(px, py);
+        else this.bg.lineTo(px, py);
+      }
+      this.bg.strokePath();
+    }
+
+    // Outer halo — two layered translucent glows for depth.
+    this.bg.fillStyle(color, 0.12);
+    this.bg.fillCircle(x, y, r * 2.1 * breath);
     this.bg.fillStyle(color, 0.25);
-    this.bg.fillCircle(x, y, r * 1.7 * breath);
-    // core
+    this.bg.fillCircle(x, y, r * 1.55 * breath);
+
+    // Core body with a subtle inner gradient (stacked circles).
+    this.bg.fillStyle(0x2a1810, 1);
+    this.bg.fillCircle(x, y, r * 1.08);
     this.bg.fillStyle(color, 1);
     this.bg.fillCircle(x, y, r);
-    this.bg.fillStyle(0xf5e8c8, 0.8);
-    this.bg.fillCircle(x, y, r * 0.38);
+    // Rim shading on the lower-right and a warm highlight on the upper-left.
+    this.bg.fillStyle(0x1a0e06, 0.25);
+    this.bg.fillCircle(x + r * 0.25, y + r * 0.3, r * 0.7);
+    this.bg.fillStyle(0xf5e8c8, 0.35);
+    this.bg.fillCircle(x - r * 0.25, y - r * 0.3, r * 0.55);
+    // Bright core
+    this.bg.fillStyle(0xf5e8c8, 0.9);
+    this.bg.fillCircle(x, y, r * 0.36 * breath);
+    this.bg.fillStyle(0xfff3d0, 0.9);
+    this.bg.fillCircle(x - r * 0.1, y - r * 0.1, r * 0.18);
+
+    // Drifting spore motes — rise upward from the heart and fade out.
+    // Positions are time-based so they animate, but each mote is keyed to a
+    // stable offset so the swarm doesn't flicker between frames.
+    const moteCount = 5;
+    const driftHeight = r * 4;
+    for (let i = 0; i < moteCount; i++) {
+      const offset = (i / moteCount) + seed;
+      const t = ((this.state.time * 0.22 + offset) % 1);
+      const mx = x + Math.sin(t * Math.PI * 2 + i) * r * 0.6;
+      const my = y - t * driftHeight;
+      const alpha = Math.sin(t * Math.PI) * 0.6;
+      const rad = 1.5 + Math.sin(t * Math.PI) * 2;
+      this.fx.fillStyle(color, alpha * 0.4);
+      this.fx.fillCircle(mx, my, rad * 1.8);
+      this.fx.fillStyle(0xf5e8c8, alpha);
+      this.fx.fillCircle(mx, my, rad);
+    }
 
     // HP bar is part of the in-game HUD — hide it in the pre-game menu.
     if (this.phase !== "playing") return;
@@ -862,13 +990,25 @@ export class GameScene extends Phaser.Scene {
         alpha = 0.45;
       }
       const droop = disabled ? 4 : 0;
-      this.bg.fillStyle(fillColor, alpha);
-      this.bg.fillCircle(x, y + droop, r - 4);
 
-      // Ring (level indicator)
+      // Soft glow behind structure — reads the structure's territory before
+      // the shape itself renders. Stronger on active, faint while growing.
+      const glowAlpha = s.status === "active" && !disabled ? 0.22 : 0.1;
+      this.bg.fillStyle(fillColor, glowAlpha);
+      this.bg.fillCircle(x, y + droop, r + 2);
+
+      // Kind-specific shape fills the slot footprint.
+      this.drawStructureShape(s.kind, x, y + droop, r - 4, fillColor, alpha, s.id);
+
+      // Ring (level indicator) — now a warm rim rather than a hard circle.
       if (s.level > 1) {
         this.bg.lineStyle(3, 0xf5e8c8, disabled ? 0.4 : 0.9);
-        this.bg.strokeCircle(x, y + droop, r - 4);
+        this.bg.strokeCircle(x, y + droop, r - 2);
+        // Inner tick accents to differentiate L2 vs L3+.
+        if (s.level >= 3) {
+          this.bg.lineStyle(1.5, 0xf5e8c8, disabled ? 0.3 : 0.7);
+          this.bg.strokeCircle(x, y + droop, r - 7);
+        }
       }
 
       // Progress arc while growing/mutating.
@@ -948,6 +1088,217 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private drawStructureShape(
+    kind: StructureKind,
+    x: number,
+    y: number,
+    r: number,
+    color: number,
+    alpha: number,
+    id: number,
+  ): void {
+    switch (kind) {
+      case "hyphae":
+        this.drawHyphaeShape(x, y, r, color, alpha, id);
+        break;
+      case "rhizomorph":
+        this.drawRhizomorphShape(x, y, r, color, alpha, id);
+        break;
+      case "fruiting":
+        this.drawFruitingShape(x, y, r, color, alpha, id);
+        break;
+      case "decomposer":
+        this.drawDecomposerShape(x, y, r, color, alpha, id);
+        break;
+    }
+  }
+
+  /** Hyphal mat: dense tufted center with radial threads feathering outward. */
+  private drawHyphaeShape(
+    x: number,
+    y: number,
+    r: number,
+    color: number,
+    alpha: number,
+    id: number,
+  ): void {
+    // Base mat — slightly darker outer disc, warmer inner core.
+    this.bg.fillStyle(0x2a1810, alpha * 0.6);
+    this.bg.fillCircle(x, y, r);
+    this.bg.fillStyle(color, alpha * 0.7);
+    this.bg.fillCircle(x, y, r * 0.92);
+    this.bg.fillStyle(color, alpha);
+    this.bg.fillCircle(x, y, r * 0.55);
+    // Radial threads — many thin lines from center out past the disc edge.
+    const threads = 14;
+    this.bg.lineStyle(1, color, alpha * 0.8);
+    for (let i = 0; i < threads; i++) {
+      const ang = (i / threads) * Math.PI * 2 + (id * 0.173);
+      const len = r * (1.05 + 0.22 * Math.sin(i * 1.7 + id));
+      this.bg.beginPath();
+      this.bg.moveTo(x + Math.cos(ang) * r * 0.3, y + Math.sin(ang) * r * 0.3);
+      this.bg.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+      this.bg.strokePath();
+    }
+    // Central highlight tuft.
+    this.bg.fillStyle(0xf5e8c8, alpha * 0.35);
+    this.bg.fillCircle(x - r * 0.1, y - r * 0.1, r * 0.25);
+  }
+
+  /** Rhizomorph: braided cord coiled into a tight spiral rosette. */
+  private drawRhizomorphShape(
+    x: number,
+    y: number,
+    r: number,
+    color: number,
+    alpha: number,
+    id: number,
+  ): void {
+    // Dark backing pad so the coil reads against the slot frame.
+    this.bg.fillStyle(0x2a2428, alpha * 0.55);
+    this.bg.fillCircle(x, y, r);
+    // Two interleaved spirals that evoke a braided cord.
+    const turns = 2.4;
+    const steps = 48;
+    const outer = r * 0.95;
+    const drawSpiral = (
+      phaseOff: number,
+      width: number,
+      shade: number,
+      a: number,
+    ) => {
+      this.bg.lineStyle(width, shade, a);
+      this.bg.beginPath();
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const radius = outer * (1 - t * 0.9);
+        const ang = phaseOff + t * Math.PI * 2 * turns + id * 0.31;
+        const px = x + Math.cos(ang) * radius;
+        const py = y + Math.sin(ang) * radius;
+        if (s === 0) this.bg.moveTo(px, py);
+        else this.bg.lineTo(px, py);
+      }
+      this.bg.strokePath();
+    };
+    drawSpiral(0, 5, 0x4a4048, alpha * 0.9);
+    drawSpiral(Math.PI, 5, 0x4a4048, alpha * 0.9);
+    drawSpiral(0, 3, color, alpha);
+    drawSpiral(Math.PI, 3, color, alpha);
+    // Bright highlight specks along the ridge on the upper-left.
+    this.bg.fillStyle(0xf5e8c8, alpha * 0.6);
+    for (let i = 0; i < 3; i++) {
+      const ang = Math.PI * 0.75 + i * 0.6 + id * 0.11;
+      const rad = r * (0.25 + i * 0.2);
+      this.bg.fillCircle(x + Math.cos(ang) * rad, y + Math.sin(ang) * rad, 1.4);
+    }
+  }
+
+  /** Fruiting cluster: three mushroom silhouettes rising out of the slot. */
+  private drawFruitingShape(
+    x: number,
+    y: number,
+    r: number,
+    color: number,
+    alpha: number,
+    id: number,
+  ): void {
+    // Dark wet base — a little pool of substrate under the cluster.
+    this.bg.fillStyle(0x2a1820, alpha * 0.7);
+    this.bg.fillEllipse(x, y + r * 0.55, r * 1.7, r * 0.55);
+
+    // Three mushrooms — stable offsets per id so the cluster doesn't jitter.
+    const caps: { dx: number; dy: number; capR: number; stemH: number; scale: number }[] = [
+      { dx: -r * 0.5, dy: r * 0.05, capR: r * 0.48, stemH: r * 0.55, scale: 1.0 },
+      { dx: r * 0.05, dy: -r * 0.15, capR: r * 0.6, stemH: r * 0.85, scale: 1.1 },
+      { dx: r * 0.55, dy: r * 0.15, capR: r * 0.4, stemH: r * 0.5, scale: 0.85 },
+    ];
+    const stemColor = 0xe8d9b0;
+    const stemShade = 0xa89878;
+    // Sort back-to-front by dy so nearer mushrooms overlap farther ones.
+    const order = [0, 1, 2].sort((a, b) => caps[a].dy - caps[b].dy);
+    for (const idx of order) {
+      const m = caps[idx];
+      const cx = x + m.dx;
+      const stemBase = y + r * 0.5;
+      const stemTop = stemBase - m.stemH;
+      const stemW = m.capR * 0.34;
+      // Stem (slightly curved with a hint of shadow)
+      this.bg.fillStyle(stemShade, alpha);
+      this.bg.fillRoundedRect(cx - stemW / 2, stemTop, stemW, m.stemH, stemW / 2);
+      this.bg.fillStyle(stemColor, alpha);
+      this.bg.fillRoundedRect(
+        cx - stemW / 2 + 1,
+        stemTop,
+        stemW - 2,
+        m.stemH,
+        (stemW - 2) / 2,
+      );
+      // Cap shadow underside (gill band).
+      this.bg.fillStyle(0x3a2830, alpha);
+      this.bg.fillEllipse(cx, stemTop + 2, m.capR * 1.9, m.capR * 0.6);
+      // Cap body.
+      this.bg.fillStyle(color, alpha);
+      this.bg.fillEllipse(cx, stemTop - m.capR * 0.15, m.capR * 2.0, m.capR * 1.3);
+      // Cap highlight.
+      this.bg.fillStyle(0xf0c8ff, alpha * 0.5);
+      this.bg.fillEllipse(
+        cx - m.capR * 0.3,
+        stemTop - m.capR * 0.4,
+        m.capR * 0.8,
+        m.capR * 0.35,
+      );
+      // A couple of light spots on the cap (fairy-tale speckle).
+      this.bg.fillStyle(0xf5e8c8, alpha * 0.65);
+      this.bg.fillCircle(cx + m.capR * 0.35, stemTop - m.capR * 0.25, 1.6);
+      this.bg.fillCircle(cx - m.capR * 0.2, stemTop - m.capR * 0.05, 1.2);
+    }
+    void id;
+  }
+
+  /** Decomposer: ragged rot patch staining the bark with ochre colonies. */
+  private drawDecomposerShape(
+    x: number,
+    y: number,
+    r: number,
+    color: number,
+    alpha: number,
+    id: number,
+  ): void {
+    // Five overlapping irregular blobs give the rot its broken-down feel.
+    const blobs = 5;
+    this.bg.fillStyle(0x3a2410, alpha * 0.7);
+    for (let i = 0; i < blobs; i++) {
+      const ang = (i / blobs) * Math.PI * 2 + id * 0.21;
+      const dist = r * 0.45 * ((i * 0.37) % 1);
+      this.bg.fillCircle(
+        x + Math.cos(ang) * dist,
+        y + Math.sin(ang) * dist,
+        r * (0.55 + ((i * 0.29) % 0.3)),
+      );
+    }
+    // Main ochre layer.
+    this.bg.fillStyle(color, alpha * 0.9);
+    for (let i = 0; i < blobs; i++) {
+      const ang = (i / blobs) * Math.PI * 2 + id * 0.21 + 0.7;
+      const dist = r * 0.35 * ((i * 0.41) % 1);
+      this.bg.fillCircle(
+        x + Math.cos(ang) * dist,
+        y + Math.sin(ang) * dist,
+        r * (0.45 + ((i * 0.19) % 0.25)),
+      );
+    }
+    // Wet dark center.
+    this.bg.fillStyle(0x5a2a10, alpha * 0.85);
+    this.bg.fillCircle(x + r * 0.05, y + r * 0.05, r * 0.3);
+    // Cream spore flecks around the rim.
+    this.bg.fillStyle(0xf5e8c8, alpha * 0.7);
+    for (let i = 0; i < 6; i++) {
+      const ang = i * 1.04 + id * 0.17;
+      const dist = r * (0.65 + (i % 2) * 0.15);
+      this.bg.fillCircle(x + Math.cos(ang) * dist, y + Math.sin(ang) * dist, 1.2);
+    }
+  }
+
   private drawCombatLines(side: Side): void {
     const colony = this.state[side];
     const enemy: Side = side === "left" ? "right" : "left";
@@ -961,13 +1312,36 @@ export class GameScene extends Phaser.Scene {
         if (!targetInfo) continue;
         const tp = targetInfo.pos;
         const pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(this.state.time * 8 + s.id));
-        this.fx.lineStyle(2, 0xdfe4ec, pulse);
-        this.fx.beginPath();
-        this.fx.moveTo(fromPos.x, fromPos.y);
-        this.fx.lineTo(tp.x, tp.y);
-        this.fx.strokePath();
-        // Small dot at the impact point.
-        this.fx.fillStyle(0xdfe4ec, pulse);
+        // Paired braided threads — two sinusoidal strands offset perpendicular
+        // to the attack line read as a living mycelial cord rather than a laser.
+        const dx = tp.x - fromPos.x;
+        const dy = tp.y - fromPos.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len;
+        const ny = dx / len;
+        const steps = 16;
+        const amp = 4;
+        for (const strand of [-1, 1]) {
+          this.fx.lineStyle(strand === -1 ? 2.5 : 1.5, 0xdfe4ec, pulse);
+          this.fx.beginPath();
+          for (let k = 0; k <= steps; k++) {
+            const t = k / steps;
+            const wobble =
+              Math.sin(t * Math.PI * 2.4 + this.state.time * 6 + s.id + strand) *
+              amp *
+              Math.sin(t * Math.PI);
+            const px = fromPos.x + dx * t + nx * wobble * strand;
+            const py = fromPos.y + dy * t + ny * wobble * strand;
+            if (k === 0) this.fx.moveTo(px, py);
+            else this.fx.lineTo(px, py);
+          }
+          this.fx.strokePath();
+        }
+        // Impact ripple at the target.
+        const ripple = (this.state.time * 2 + s.id * 0.13) % 1;
+        this.fx.lineStyle(1.5, 0xdfe4ec, (1 - ripple) * pulse);
+        this.fx.strokeCircle(tp.x, tp.y, 4 + ripple * 10);
+        this.fx.fillStyle(0xf5e8c8, pulse);
         this.fx.fillCircle(tp.x, tp.y, 3);
       }
 
@@ -980,13 +1354,40 @@ export class GameScene extends Phaser.Scene {
         const t = 1 - Math.min(1, (s.surgeTimer ?? 0) / cfgDur);
         const headX = fromPos.x + (tp.x - fromPos.x) * t;
         const headY = fromPos.y + (tp.y - fromPos.y) * t;
+        // Tapered streak — draw as two overlaid lines with a soft outer glow.
+        this.fx.lineStyle(8, 0xc080ff, 0.25);
+        this.fx.beginPath();
+        this.fx.moveTo(fromPos.x, fromPos.y);
+        this.fx.lineTo(headX, headY);
+        this.fx.strokePath();
         this.fx.lineStyle(4, 0xc080ff, 0.85);
         this.fx.beginPath();
         this.fx.moveTo(fromPos.x, fromPos.y);
         this.fx.lineTo(headX, headY);
         this.fx.strokePath();
+        // Leading spore cloud head (halo + bright core).
+        this.fx.fillStyle(0xc080ff, 0.45);
+        this.fx.fillCircle(headX, headY, 11);
         this.fx.fillStyle(0xe8c0ff, 1);
         this.fx.fillCircle(headX, headY, 6);
+        // Impact splash — expanding rings + scattered motes once the head
+        // nears the target. Fades out over the back half of the burst.
+        const proximity = Math.min(1, t);
+        if (proximity > 0.4) {
+          const splashT = (proximity - 0.4) / 0.6;
+          const splashAlpha = (1 - splashT) * 0.9;
+          this.fx.lineStyle(2, 0xe8c0ff, splashAlpha);
+          this.fx.strokeCircle(tp.x, tp.y, 6 + splashT * 22);
+          this.fx.lineStyle(1, 0xc080ff, splashAlpha * 0.6);
+          this.fx.strokeCircle(tp.x, tp.y, 10 + splashT * 32);
+          // Scatter a few spore motes around the impact.
+          for (let k = 0; k < 6; k++) {
+            const ang = (k / 6) * Math.PI * 2 + s.id * 0.23;
+            const dist = (6 + splashT * 22) * (0.7 + ((k * 0.29) % 0.3));
+            this.fx.fillStyle(0xe8c0ff, splashAlpha);
+            this.fx.fillCircle(tp.x + Math.cos(ang) * dist, tp.y + Math.sin(ang) * dist, 2);
+          }
+        }
       }
     }
   }

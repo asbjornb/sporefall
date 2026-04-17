@@ -1,0 +1,150 @@
+{
+  "id": "sporefall",
+  "name": "Sporefall",
+  "styleGuide": {
+    "approach": "painterly gouache with visible brushwork, soft edges, organic silhouettes, warm earthy palette; transparent PNG background; centered subject with a soft cast shadow pooled beneath it; no text, borders, or UI chrome",
+    "resolution": "256x256",
+    "paletteConstraints": [
+      "wood base tones: #1b120a, #2a1a0a, #3a2612, #5a3a20",
+      "fungal accents restricted to kind: hyphae sage green #7a8a3a / #9bb04a, rhizomorph cool grey #bfc4c9 / #8a9099, fruiting mushroom purple #8a4fa8 / #c080ff, decomposer ochre tan #c08040 / #e0a868",
+      "cream highlight: #f5e8c8",
+      "max 8 colors per icon",
+      "no pure black, no pure white — lift shadows, temper highlights"
+    ],
+    "composition": [
+      "subject centered, fills ~70% of canvas",
+      "light source consistently from top-left, shadow bottom-right",
+      "soft radial shadow pooled beneath subject on transparent background",
+      "slight asymmetry — organic, hand-painted, never mechanically perfect"
+    ],
+    "consistency": [
+      "identical lighting direction, shadow falloff and brush roughness across the mycelium-family chain",
+      "no flat vector fills — every surface carries a gradient or scumble",
+      "silhouettes remain distinct at small sizes (read clearly at 48px)",
+      "no outlines or ink lines — forms separated by value and hue"
+    ],
+    "phaseTinting": {
+      "left": "engine multiplies icon by fungal green (#9bb04a) for the player's colony — keep the base art hue-neutral enough that a green multiply still reads correctly",
+      "right": "engine multiplies icon by rust orange (#c46a3a) for the enemy's colony — same neutrality constraint"
+    }
+  },
+  "icons": [
+    {
+      "id": "structure_hyphae",
+      "object": "a circular mat of hyphal threads lying on damp bark",
+      "description": "webbed network of fine sage-green threads radiating from a dense tufted center out to a soft feathered edge; threads taper and overlap; the mat fills a round footprint with no stem — it hugs the ground",
+      "use": "hyphae structure — replaces the flat green disc inside a slot circle",
+      "theme": "neutral",
+      "category": "structures",
+      "chain": "mycelium-family",
+      "chainRole": "base",
+      "size": 256,
+      "tags": ["structure", "foundation", "smother"]
+    },
+    {
+      "id": "structure_rhizomorph",
+      "object": "a braided mycelial cord coiled into a tight rosette",
+      "description": "thick silver-grey root-like cord wound into a spiral; visible braided twists, bright highlights along the ridges and darker recesses between them; a few frayed tips escape the coil",
+      "use": "rhizomorph structure — braided spiral sits in a slot circle",
+      "theme": "neutral",
+      "category": "structures",
+      "chain": "mycelium-family",
+      "chainRole": "derived",
+      "chainNote": "same painterly lighting and scale as hyphae; silhouette is a raised coil rather than a flat mat; silver-grey replaces sage green",
+      "size": 256,
+      "tags": ["structure", "attack", "dissolve"]
+    },
+    {
+      "id": "structure_fruiting",
+      "object": "a small cluster of purple-capped mushrooms growing from bark",
+      "description": "three or four mushrooms of different sizes, deep purple caps with a wet sheen, cream gills visible under the tilted caps, pale cream stems; the cluster leans slightly, asymmetric",
+      "use": "fruiting structure — mushroom cluster rises out of a slot circle",
+      "theme": "neutral",
+      "category": "structures",
+      "chain": "mycelium-family",
+      "chainRole": "derived",
+      "chainNote": "same painterly lighting as hyphae; upright 3D silhouette replaces the flat mat; mushroom purple is the only accent",
+      "size": 256,
+      "tags": ["structure", "burst", "spore"]
+    },
+    {
+      "id": "structure_decomposer",
+      "object": "a rotting patch of bark colonised by ochre rot",
+      "description": "irregular ochre-tan patch eating into horizontal wood grain; ragged soft-edged border, a darker wet center where the wood has broken down, a few powdery cream spore flecks scattered around the rim",
+      "use": "decomposer structure — flat rot patch inside a slot circle",
+      "theme": "neutral",
+      "category": "structures",
+      "chain": "mycelium-family",
+      "chainRole": "derived",
+      "chainNote": "same painterly lighting as hyphae; stays flat to the surface like hyphae but ochre tan replaces sage green; texture is wet and broken-down rather than threadlike",
+      "size": 256,
+      "tags": ["structure", "economy", "nutrients"]
+    },
+    {
+      "id": "sclerotium_heart",
+      "object": "a pulsing fungal sclerotium — a rounded bulb with a glowing core",
+      "description": "semi-translucent rounded node embedded in bark; cream-lit inner core bleeds through a darker outer skin; a halo of fine wispy threads fans outward from the rim; slightly lumpy, organic silhouette",
+      "use": "colony heart — replaces the plain circle at each end of the log; the engine applies side-tint (green for player, orange for enemy) via phaseTinting",
+      "theme": "neutral",
+      "category": "structures",
+      "chain": null,
+      "chainRole": "standalone",
+      "size": 256,
+      "tags": ["heart", "core", "hp"]
+    },
+    {
+      "id": "bark_tile",
+      "object": "a seamless tile of damp rotting bark",
+      "description": "dark brown bark grain running horizontally with deep vertical cracks, occasional moss tufts and small pale lichen patches; subtle wetness in the recesses; tiles cleanly along both axes with no visible seam",
+      "use": "log body texture — tiled across the log rectangle beneath every structure",
+      "theme": "neutral",
+      "category": "background",
+      "chain": null,
+      "chainRole": "standalone",
+      "size": 256,
+      "tags": ["seamless", "texture", "log"]
+    },
+    {
+      "id": "particle_spore",
+      "object": "a single wispy puff of spore dust",
+      "description": "soft cream cloudlet with fuzzy asymmetric edges fading fully to transparent; no hard outline; reads as a dry powdery puff rather than smoke",
+      "use": "drifting spore particles emitted from sclerotia and during fruiting bursts",
+      "theme": "neutral",
+      "category": "particles",
+      "chain": "spore-family",
+      "chainRole": "base",
+      "size": 128,
+      "tags": ["particle", "drift"]
+    },
+    {
+      "id": "particle_glow",
+      "object": "a small round bioluminescent mote",
+      "description": "soft cream core with a warm halo fading to transparent; perfectly round, no hard outline; slightly warmer in the center",
+      "use": "ambient glow specks near sclerotia and along pressure pulses",
+      "theme": "neutral",
+      "category": "particles",
+      "chain": "spore-family",
+      "chainRole": "derived",
+      "chainNote": "tighter and rounder than the spore puff; same soft-edged fade to transparent",
+      "size": 128,
+      "tags": ["particle", "glow"]
+    },
+    {
+      "id": "bg_forest_floor",
+      "object": "a wide horizontal illustration of a damp forest floor with a fallen log in the foreground",
+      "description": "moss beds, fern fronds, scattered leaf litter, a few distant mushrooms catching a shaft of warm light; soft warm fog thickens toward the edges; the central foreground log is kept blank and flat so the game's own log rectangle draws cleanly on top",
+      "use": "scene background behind the log and HUD",
+      "theme": "neutral",
+      "category": "background",
+      "chain": null,
+      "chainRole": "standalone",
+      "size": 1536,
+      "tags": ["background", "scene", "wide"]
+    }
+  ],
+  "states": {},
+  "defaultModel": "black-forest-labs/flux-schnell",
+  "defaultSize": "256x256",
+  "createdAt": "",
+  "updatedAt": ""
+}
