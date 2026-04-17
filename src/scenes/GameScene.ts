@@ -79,11 +79,21 @@ interface Layout {
   leftSlots: SlotSpec[];
   rightSlots: SlotSpec[];
   slotRadius: number;
+  /** Midpoint X of the slot row — used to draw a divider between sides. */
+  slotDividerX: number;
+  /** Top/bottom Y of the slot area — used for the divider line. */
+  slotAreaTop: number;
+  slotAreaBottom: number;
   buildBtns: BuildBtnRect[];
   pauseBtn: ControlBtnRect;
   restartBtn: ControlBtnRect;
   tutorialBtn: ControlBtnRect;
   difficultyBtn: DifficultyBtnRect;
+  hpBarOffsetAboveLog: number;
+  /** Horizontal center for the RPS legend (above the log). */
+  rpsLegendX: number;
+  /** Y position for the RPS legend (between top controls and HP bars). */
+  rpsLegendY: number;
 }
 
 function desaturate(hex: number, amount: number): number {
@@ -97,30 +107,38 @@ function desaturate(hex: number, amount: number): number {
 
 function computeLayout(W: number, H: number): Layout {
   // Uniform UI scale relative to the original 1280x720 design. On a phone in
-  // landscape (~800x380) this lands around 0.5, which matches what the old FIT
-  // scaling used to render — keeping fonts/buttons/slots readable but compact.
-  const uiScale = Math.max(0.55, Math.min(1.2, Math.min(W / 1280, H / 720)));
+  // landscape (~800x380) this drops to ~0.45, packing fonts/buttons tighter so
+  // there's room for proper spacing between rows and a mid-gap between sides.
+  const uiScale = Math.max(0.45, Math.min(1.2, Math.min(W / 1280, H / 720)));
   const s = (n: number) => Math.round(n * uiScale);
 
-  const topBarH = s(80);
-  const bottomPad = s(14);
+  const topBarH = s(76);
+  const bottomPad = s(8);
 
   // Slots region (2 rows) sits near the bottom, where the build bar used to be.
-  const slotRadius = s(32);
-  const slotRowGap = s(70);
+  const slotRadius = s(28);
+  const slotRowGap = s(58);
   const slotAreaBottom = H - bottomPad;
   const slotAreaTop = slotAreaBottom - slotRowGap * 2 + (slotRowGap - slotRadius * 2) / 2;
   const row0Y = slotAreaTop + slotRadius + s(4);
   const row1Y = row0Y + slotRowGap;
 
+  // Headroom above the log: a dedicated row for the RPS legend on top, then
+  // the HP bar just above the log. Reclaimed from the log itself so the
+  // legend always has room even on phones.
+  const hpBarOffsetAboveLog = s(16);
+  const hpBarH = Math.max(6, Math.round(12 * uiScale));
+  const legendRowH = s(20);
+  const headroom = hpBarOffsetAboveLog + hpBarH + legendRowH + s(4);
+
   // Build buttons stacked vertically along the left edge, aligned with the log.
-  const buildBarTop = topBarH + s(30);
-  const buildBarBottom = slotAreaTop - s(14);
+  const buildBarTop = topBarH + headroom;
+  const buildBarBottom = slotAreaTop - s(10);
   const buildBarH = buildBarBottom - buildBarTop;
-  const btnGap = s(16);
-  const btnH = Math.max(s(64), Math.min(s(150), Math.floor((buildBarH - btnGap * 3) / 4)));
-  const btnW = Math.max(s(140), Math.min(s(220), Math.round(W * 0.14)));
-  const leftPad = s(14);
+  const btnGap = s(20);
+  const btnH = Math.max(s(72), Math.min(s(150), Math.floor((buildBarH - btnGap * 3) / 4)));
+  const btnW = Math.max(s(130), Math.min(s(210), Math.round(W * 0.14)));
+  const leftPad = s(12);
   const buildBarX = leftPad;
   const buildBtns: BuildBtnRect[] = [];
   for (let i = 0; i < 4; i++) {
@@ -133,36 +151,42 @@ function computeLayout(W: number, H: number): Layout {
   }
 
   // Log spans between the HUD strip and the slots, starting right of the build column.
-  const heartRadius = Math.max(s(28), Math.min(s(48), Math.round(H * 0.055)));
-  const rightMargin = Math.max(s(48), Math.min(s(120), Math.round(W * 0.05)));
-  const logLeft = buildBarX + btnW + s(20);
+  const heartRadius = Math.max(s(26), Math.min(s(44), Math.round(H * 0.05)));
+  const rightMargin = Math.max(s(40), Math.min(s(110), Math.round(W * 0.045)));
+  const logLeft = buildBarX + btnW + s(18);
   const logRight = W - rightMargin;
   const logTop = buildBarTop;
-  const logBottom = buildBarBottom;
+  // Shrink the log a bit vertically so the slot area can breathe.
+  const logBottom = Math.min(buildBarBottom, logTop + Math.round(H * 0.5));
   const logW = logRight - logLeft;
-  const logH = Math.max(s(120), logBottom - logTop);
+  const logH = Math.max(s(110), logBottom - logTop);
 
   const leftHeartX = logLeft + heartRadius * 0.55;
   const rightHeartX = logRight - heartRadius * 0.55;
   const heartY = logTop + logH / 2;
 
-  // Slot columns start one spacing inward from each sclerotium.
-  const innerHalf = Math.max(0, (rightHeartX - leftHeartX) / 2 - s(40));
-  const slotSpacing = Math.max(s(60), Math.min(s(110), innerHalf / 5));
+  // Slot columns start one spacing inward from each sclerotium and leave a clear
+  // gap in the middle so the player's and enemy's buildings don't visually merge.
+  const midGap = Math.max(s(40), Math.round(W * 0.04));
+  const halfSpan = Math.max(0, (rightHeartX - leftHeartX) / 2 - midGap / 2);
+  const slotSpacing = Math.max(s(54), Math.min(s(100), halfSpan / 5));
+  const leftAnchor = leftHeartX;
+  const rightAnchor = rightHeartX;
+  const slotDividerX = (leftHeartX + rightHeartX) / 2;
   const leftSlots: SlotSpec[] = [];
   const rightSlots: SlotSpec[] = [];
   for (let row = 0; row < 2; row++) {
     const y = row === 0 ? row0Y : row1Y;
     for (let col = 0; col < 5; col++) {
-      leftSlots.push({ x: leftHeartX + slotSpacing * (col + 1), y });
-      rightSlots.push({ x: rightHeartX - slotSpacing * (col + 1), y });
+      leftSlots.push({ x: leftAnchor + slotSpacing * (col + 1), y });
+      rightSlots.push({ x: rightAnchor - slotSpacing * (col + 1), y });
     }
   }
 
   // Top-right control buttons.
-  const ctrlSize = s(60);
-  const ctrlGap = s(12);
-  const ctrlMargin = s(14);
+  const ctrlSize = s(56);
+  const ctrlGap = s(10);
+  const ctrlMargin = s(12);
   const restartBtn: ControlBtnRect = {
     x: W - ctrlSize - ctrlMargin,
     y: ctrlMargin,
@@ -186,6 +210,11 @@ function computeLayout(W: number, H: number): Layout {
     size: ctrlSize,
   };
 
+  // RPS legend sits in the top slice of the headroom, centered above the log,
+  // so it never collides with the HP bars (which live in the bottom slice).
+  const rpsLegendX = (logLeft + logRight) / 2;
+  const rpsLegendY = logTop - (hpBarOffsetAboveLog + hpBarH + legendRowH);
+
   return {
     W,
     H,
@@ -203,11 +232,17 @@ function computeLayout(W: number, H: number): Layout {
     leftSlots,
     rightSlots,
     slotRadius,
+    slotDividerX,
+    slotAreaTop,
+    slotAreaBottom,
     buildBtns,
     pauseBtn,
     restartBtn,
     tutorialBtn,
     difficultyBtn,
+    hpBarOffsetAboveLog,
+    rpsLegendX,
+    rpsLegendY,
   };
 }
 
@@ -387,8 +422,7 @@ export class GameScene extends Phaser.Scene {
     this.pausedText.setFontSize(px(64));
 
     if (this.rpsLegend) {
-      const rb = L.restartBtn;
-      this.rpsLegend.setPosition(rb.x + rb.size, rb.y + rb.size + Math.round(6 * sc));
+      this.rpsLegend.setPosition(L.rpsLegendX, L.rpsLegendY);
       this.rpsLegend.setFontSize(px(14));
     }
 
@@ -479,6 +513,7 @@ export class GameScene extends Phaser.Scene {
     this.fx.clear();
     this.drawLog();
     this.drawSclerotia();
+    this.drawSlotDivider();
     this.drawStructures("left");
     this.drawStructures("right");
     this.drawCombatLines("left");
@@ -491,6 +526,23 @@ export class GameScene extends Phaser.Scene {
     this.updatePausedOverlay();
     this.updateControlButtons();
     this.updateTutorialHint();
+  }
+
+  private drawSlotDivider(): void {
+    const L = this.layout;
+    const x = L.slotDividerX;
+    // Soft vertical line that visually separates the player's slots (left)
+    // from the enemy's slots (right). Drawn under structures so it never
+    // covers a circle.
+    this.bg.lineStyle(1, 0x6a4a30, 0.55);
+    this.bg.beginPath();
+    this.bg.moveTo(x, L.slotAreaTop);
+    this.bg.lineTo(x, L.slotAreaBottom);
+    this.bg.strokePath();
+    // Tiny end caps so the line reads as intentional, not glitchy.
+    this.bg.fillStyle(0x6a4a30, 0.55);
+    this.bg.fillCircle(x, L.slotAreaTop, 2);
+    this.bg.fillCircle(x, L.slotAreaBottom, 2);
   }
 
   private slotPosFor(side: Side, slotIdx: number): SlotSpec {
@@ -615,12 +667,13 @@ export class GameScene extends Phaser.Scene {
     this.bg.fillStyle(0xf5e8c8, 0.8);
     this.bg.fillCircle(x, y, r * 0.38);
 
-    // HP bar above the log so it never sits on bark
+    // HP bar above the log so it never sits on bark, positioned in the gap
+    // reserved by computeLayout so it can't collide with the HUD text.
     const sc = this.layout.uiScale;
-    const hpW = Math.round(140 * sc);
-    const hpH = Math.max(6, Math.round(14 * sc));
+    const hpW = Math.round(120 * sc);
+    const hpH = Math.max(6, Math.round(12 * sc));
     const hpX = x - hpW / 2;
-    const hpY = this.layout.logTop - Math.round(26 * sc);
+    const hpY = this.layout.logTop - this.layout.hpBarOffsetAboveLog;
     this.fx.fillStyle(0x000000, 0.5);
     this.fx.fillRect(hpX - 2, hpY - 2, hpW + 4, hpH + 4);
     this.fx.fillStyle(0x3a1a12, 1);
@@ -1058,7 +1111,7 @@ export class GameScene extends Phaser.Scene {
         color: "#cdb98a",
         fontFamily: "system-ui, sans-serif",
       })
-      .setOrigin(1, 0)
+      .setOrigin(0.5, 0)
       .setDepth(5);
   }
 
