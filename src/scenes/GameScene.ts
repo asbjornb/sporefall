@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { SimpleAI } from "../game/ai";
+import { SimpleAI, type AIDifficulty } from "../game/ai";
 import {
   DISABLE_DURATION,
   DISABLE_THRESHOLD,
@@ -50,6 +50,13 @@ interface ControlBtnRect {
   size: number;
 }
 
+interface DifficultyBtnRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 interface Layout {
   W: number;
   H: number;
@@ -70,6 +77,7 @@ interface Layout {
   buildBtns: BuildBtnRect[];
   pauseBtn: ControlBtnRect;
   restartBtn: ControlBtnRect;
+  difficultyBtn: DifficultyBtnRect;
 }
 
 function desaturate(hex: number, amount: number): number {
@@ -159,6 +167,13 @@ function computeLayout(W: number, H: number): Layout {
     y: ctrlMargin,
     size: ctrlSize,
   };
+  const diffW = s(110);
+  const difficultyBtn: DifficultyBtnRect = {
+    x: pauseBtn.x - diffW - ctrlGap,
+    y: ctrlMargin,
+    w: diffW,
+    h: ctrlSize,
+  };
 
   return {
     W,
@@ -180,6 +195,7 @@ function computeLayout(W: number, H: number): Layout {
     buildBtns,
     pauseBtn,
     restartBtn,
+    difficultyBtn,
   };
 }
 
@@ -208,6 +224,12 @@ export class GameScene extends Phaser.Scene {
     bg: Phaser.GameObjects.Graphics;
     icon: Phaser.GameObjects.Text;
   };
+  private difficultyBtn!: {
+    bg: Phaser.GameObjects.Graphics;
+    label: Phaser.GameObjects.Text;
+  };
+  private difficultyBtnZone!: Phaser.GameObjects.Zone;
+  private difficulty: AIDifficulty = "hard";
   private slotHit: Phaser.GameObjects.Arc[] = [];
   private selectedSlotIdx: number | null = null;
   /** Per-slot shake timer for the player's side, used to flash a denied tap on disabled. */
@@ -227,8 +249,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.difficulty = loadDifficulty();
     this.state = createGameState();
-    this.ai = new SimpleAI("right");
+    this.ai = new SimpleAI("right", this.difficulty);
     this.layout = computeLayout(this.scale.width, this.scale.height);
 
     this.bg = this.add.graphics();
@@ -361,6 +384,18 @@ export class GameScene extends Phaser.Scene {
     this.restartBtnZone
       .setPosition(rb.x + rb.size / 2, rb.y + rb.size / 2)
       .setSize(rb.size, rb.size);
+
+    const db = L.difficultyBtn;
+    this.difficultyBtn.bg
+      .setData("x", db.x)
+      .setData("y", db.y)
+      .setData("w", db.w)
+      .setData("h", db.h);
+    this.difficultyBtn.label.setPosition(db.x + db.w / 2, db.y + db.h / 2);
+    this.difficultyBtn.label.setFontSize(px(20));
+    this.difficultyBtnZone
+      .setPosition(db.x + db.w / 2, db.y + db.h / 2)
+      .setSize(db.w, db.h);
 
     this.upgradeBtnLabel.setFontSize(px(18));
   }
@@ -851,12 +886,51 @@ export class GameScene extends Phaser.Scene {
     });
     this.restartBtn = { bg: restartBg, icon: restartIcon };
     this.restartBtnZone = restartZone;
+
+    const diffBg = this.add.graphics().setDepth(15);
+    const diffLabel = this.add
+      .text(0, 0, "", {
+        fontSize: "20px",
+        color: "#f8ecc8",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setDepth(16);
+    const diffZone = this.add
+      .zone(0, 0, 10, 10)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(16);
+    diffZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation?.();
+      this.cycleDifficulty();
+    });
+    this.difficultyBtn = { bg: diffBg, label: diffLabel };
+    this.difficultyBtnZone = diffZone;
   }
 
   private updateControlButtons(): void {
     this.drawControlButton(this.pauseBtn, this.paused ? 0x3a5a28 : 0x3a2a18);
     this.pauseBtn.icon.setText(this.paused ? "\u25B6" : "\u23F8");
     this.drawControlButton(this.restartBtn, 0x3a2a18);
+    this.drawDifficultyButton();
+  }
+
+  private drawDifficultyButton(): void {
+    const x = this.difficultyBtn.bg.getData("x") as number;
+    const y = this.difficultyBtn.bg.getData("y") as number;
+    const w = this.difficultyBtn.bg.getData("w") as number;
+    const h = this.difficultyBtn.bg.getData("h") as number;
+    const fill = this.difficulty === "hard" ? 0x6a2a18 : 0x2a3a28;
+    this.difficultyBtn.bg.clear();
+    this.difficultyBtn.bg.fillStyle(fill, 0.9);
+    this.difficultyBtn.bg.fillRoundedRect(x, y, w, h, 10);
+    this.difficultyBtn.bg.lineStyle(2, 0xf5e8c8, 0.8);
+    this.difficultyBtn.bg.strokeRoundedRect(x, y, w, h, 10);
+    this.difficultyBtn.label.setText(
+      this.difficulty === "hard" ? "AI: Hard" : "AI: Easy",
+    );
   }
 
   private drawControlButton(
@@ -1061,8 +1135,34 @@ export class GameScene extends Phaser.Scene {
 
   private restart(): void {
     this.state = createGameState();
-    this.ai = new SimpleAI("right");
+    this.ai = new SimpleAI("right", this.difficulty);
     this.paused = false;
     this.selectedSlotIdx = null;
+  }
+
+  private cycleDifficulty(): void {
+    this.difficulty = this.difficulty === "easy" ? "hard" : "easy";
+    saveDifficulty(this.difficulty);
+    this.restart();
+  }
+}
+
+const DIFFICULTY_STORAGE_KEY = "sporefall.difficulty";
+
+function loadDifficulty(): AIDifficulty {
+  try {
+    const v = window.localStorage?.getItem(DIFFICULTY_STORAGE_KEY);
+    if (v === "easy" || v === "hard") return v;
+  } catch {
+    // ignore (e.g. SSR / privacy mode)
+  }
+  return "hard";
+}
+
+function saveDifficulty(d: AIDifficulty): void {
+  try {
+    window.localStorage?.setItem(DIFFICULTY_STORAGE_KEY, d);
+  } catch {
+    // ignore
   }
 }
