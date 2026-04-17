@@ -90,18 +90,24 @@ interface Layout {
   buildBtns: BuildBtnRect[];
   pauseBtn: ControlBtnRect;
   restartBtn: ControlBtnRect;
-  tutorialBtn: ControlBtnRect;
+  /** Tutorial "How to Play" button — lives inside the menu panel. */
+  tutorialBtn: DifficultyBtnRect;
+  /** AI difficulty toggle — lives inside the menu panel. */
   difficultyBtn: DifficultyBtnRect;
   hpBarOffsetAboveLog: number;
   /** Horizontal center for the RPS legend (above the log). */
   rpsLegendX: number;
   /** Y position for the RPS legend (between top controls and HP bars). */
   rpsLegendY: number;
-  /** Center position for the pre-game title. */
+  /** Center position for the pre-game title (inside the menu panel). */
   titleX: number;
   titleY: number;
+  /** Y position of the pre-game subtitle. */
+  subtitleY: number;
   /** Pre-game "Spread" start button rect. */
   spreadBtn: BuildBtnRect;
+  /** Pre-game modal panel rect (backdrop + frame). */
+  menuPanel: BuildBtnRect;
 }
 
 function desaturate(hex: number, amount: number): number {
@@ -195,7 +201,9 @@ function computeLayout(W: number, H: number): Layout {
     }
   }
 
-  // Top-right control buttons.
+  // Top-right in-game controls: pause + restart only. Tutorial & difficulty
+  // live inside the pre-game modal (see menuPanel below) and are hidden during
+  // play so the HUD stays uncluttered.
   const ctrlSize = s(56);
   const ctrlGap = s(10);
   const ctrlMargin = s(12);
@@ -209,35 +217,54 @@ function computeLayout(W: number, H: number): Layout {
     y: ctrlMargin,
     size: ctrlSize,
   };
-  const diffW = s(110);
-  const difficultyBtn: DifficultyBtnRect = {
-    x: pauseBtn.x - diffW - ctrlGap,
-    y: ctrlMargin,
-    w: diffW,
-    h: ctrlSize,
-  };
-  const tutorialBtn: ControlBtnRect = {
-    x: difficultyBtn.x - ctrlSize - ctrlGap,
-    y: ctrlMargin,
-    size: ctrlSize,
-  };
 
   // RPS legend sits in the top slice of the headroom, centered above the log,
   // so it never collides with the HP bars (which live in the bottom slice).
   const rpsLegendX = (logLeft + logRight) / 2;
   const rpsLegendY = logTop - (hpBarOffsetAboveLog + hpBarH + legendRowH);
 
-  // Pre-game menu: title sits a touch above the log's vertical center, spread
-  // button directly under it. Sized generously so the tap target is obvious.
+  // Pre-game modal: centered panel that houses the title, Spread CTA, and
+  // the tutorial/difficulty controls. The game world dims behind it.
+  const panelMaxW = s(560);
+  const panelMaxH = s(460);
+  const panelW = Math.min(W - s(32), panelMaxW);
+  const panelH = Math.min(H - s(32), panelMaxH);
+  const panelX = Math.round(W / 2 - panelW / 2);
+  const panelY = Math.round(H / 2 - panelH / 2);
+  const menuPanel: BuildBtnRect = { x: panelX, y: panelY, w: panelW, h: panelH };
+
   const titleX = W / 2;
-  const titleY = Math.round(H * 0.38);
-  const spreadW = Math.max(s(200), Math.min(s(320), Math.round(W * 0.28)));
-  const spreadH = Math.max(s(64), Math.min(s(96), Math.round(H * 0.12)));
+  const titleY = Math.round(panelY + panelH * 0.22);
+  const subtitleY = Math.round(panelY + panelH * 0.36);
+
+  const spreadW = Math.min(Math.round(panelW * 0.65), s(300));
+  const spreadH = Math.max(s(60), Math.min(s(92), Math.round(panelH * 0.18)));
   const spreadBtn: BuildBtnRect = {
     x: Math.round(W / 2 - spreadW / 2),
-    y: Math.round(H * 0.52),
+    y: Math.round(panelY + panelH * 0.5 - spreadH / 2),
     w: spreadW,
     h: spreadH,
+  };
+
+  // Bottom row inside the panel: "How to Play" on the left, difficulty toggle
+  // on the right. Both are full labeled buttons (not icons).
+  const menuBtnH = s(52);
+  const menuBtnGap = s(16);
+  const menuBtnW = Math.min(s(170), Math.round((panelW - s(48) - menuBtnGap) / 2));
+  const menuRowW = menuBtnW * 2 + menuBtnGap;
+  const menuRowX = Math.round(W / 2 - menuRowW / 2);
+  const menuRowY = Math.round(panelY + panelH - menuBtnH - s(28));
+  const tutorialBtn: DifficultyBtnRect = {
+    x: menuRowX,
+    y: menuRowY,
+    w: menuBtnW,
+    h: menuBtnH,
+  };
+  const difficultyBtn: DifficultyBtnRect = {
+    x: menuRowX + menuBtnW + menuBtnGap,
+    y: menuRowY,
+    w: menuBtnW,
+    h: menuBtnH,
   };
 
   return {
@@ -270,7 +297,9 @@ function computeLayout(W: number, H: number): Layout {
     rpsLegendY,
     titleX,
     titleY,
+    subtitleY,
     spreadBtn,
+    menuPanel,
   };
 }
 
@@ -310,9 +339,11 @@ export class GameScene extends Phaser.Scene {
   };
   private tutorialBtn!: {
     bg: Phaser.GameObjects.Graphics;
-    icon: Phaser.GameObjects.Text;
+    label: Phaser.GameObjects.Text;
   };
   private tutorialBtnZone!: Phaser.GameObjects.Zone;
+  private menuBg!: Phaser.GameObjects.Graphics;
+  private subtitleText!: Phaser.GameObjects.Text;
   private tutorial!: TutorialDirector;
   private hintText!: Phaser.GameObjects.Text;
   private summaryBg!: Phaser.GameObjects.Graphics;
@@ -372,6 +403,7 @@ export class GameScene extends Phaser.Scene {
     this.state = createGameState();
     this.ai = new SimpleAI("right", this.difficulty);
     this.layout = computeLayout(this.scale.width, this.scale.height);
+    emitPhase(this.phase);
 
     if (this.tutorial.active) {
       // Tutorial mode: skip countdown, grant ample nutrients, keep enemy passive.
@@ -530,12 +562,16 @@ export class GameScene extends Phaser.Scene {
       .setSize(rb.size, rb.size);
 
     const tb = L.tutorialBtn;
-    this.tutorialBtn.bg.setData("x", tb.x).setData("y", tb.y).setData("size", tb.size);
-    this.tutorialBtn.icon.setPosition(tb.x + tb.size / 2, tb.y + tb.size / 2);
-    this.tutorialBtn.icon.setFontSize(px(34));
+    this.tutorialBtn.bg
+      .setData("x", tb.x)
+      .setData("y", tb.y)
+      .setData("w", tb.w)
+      .setData("h", tb.h);
+    this.tutorialBtn.label.setPosition(tb.x + tb.w / 2, tb.y + tb.h / 2);
+    this.tutorialBtn.label.setFontSize(px(20));
     this.tutorialBtnZone
-      .setPosition(tb.x + tb.size / 2, tb.y + tb.size / 2)
-      .setSize(tb.size, tb.size);
+      .setPosition(tb.x + tb.w / 2, tb.y + tb.h / 2)
+      .setSize(tb.w, tb.h);
 
     const db = L.difficultyBtn;
     this.difficultyBtn.bg
@@ -553,12 +589,16 @@ export class GameScene extends Phaser.Scene {
 
     if (this.titleText) {
       this.titleText.setPosition(L.titleX, L.titleY);
-      this.titleText.setFontSize(px(96));
+      this.titleText.setFontSize(px(72));
+    }
+    if (this.subtitleText) {
+      this.subtitleText.setPosition(L.titleX, L.subtitleY);
+      this.subtitleText.setFontSize(px(20));
     }
     if (this.spreadBtn) {
       const sb = L.spreadBtn;
       this.spreadBtn.label.setPosition(sb.x + sb.w / 2, sb.y + sb.h / 2);
-      this.spreadBtn.label.setFontSize(px(40));
+      this.spreadBtn.label.setFontSize(px(36));
       this.spreadBtnZone
         .setPosition(sb.x + sb.w / 2, sb.y + sb.h / 2)
         .setSize(sb.w, sb.h);
@@ -1103,20 +1143,23 @@ export class GameScene extends Phaser.Scene {
     this.restartBtn = { bg: restartBg, icon: restartIcon };
     this.restartBtnZone = restartZone;
 
-    const tutorialBg = this.add.graphics().setDepth(15);
-    const tutorialIcon = this.add
-      .text(0, 0, "?", {
-        fontSize: "34px",
+    // Tutorial & difficulty buttons live inside the menu modal (depth 27+)
+    // and are hidden while a match is underway.
+    const tutorialBg = this.add.graphics().setDepth(27);
+    const tutorialLabel = this.add
+      .text(0, 0, "How to Play", {
+        fontSize: "20px",
         color: "#f8ecc8",
         fontStyle: "bold",
         fontFamily: "system-ui, sans-serif",
+        align: "center",
       })
       .setOrigin(0.5)
-      .setDepth(16);
+      .setDepth(28);
     const tutorialZone = this.add
       .zone(0, 0, 10, 10)
       .setInteractive({ useHandCursor: true })
-      .setDepth(16);
+      .setDepth(28);
     tutorialZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation?.();
       if (this.tutorial.active) {
@@ -1125,10 +1168,10 @@ export class GameScene extends Phaser.Scene {
       }
       this.summaryVisible = !this.summaryVisible;
     });
-    this.tutorialBtn = { bg: tutorialBg, icon: tutorialIcon };
+    this.tutorialBtn = { bg: tutorialBg, label: tutorialLabel };
     this.tutorialBtnZone = tutorialZone;
 
-    const diffBg = this.add.graphics().setDepth(15);
+    const diffBg = this.add.graphics().setDepth(27);
     const diffLabel = this.add
       .text(0, 0, "", {
         fontSize: "20px",
@@ -1138,11 +1181,11 @@ export class GameScene extends Phaser.Scene {
         align: "center",
       })
       .setOrigin(0.5)
-      .setDepth(16);
+      .setDepth(28);
     const diffZone = this.add
       .zone(0, 0, 10, 10)
       .setInteractive({ useHandCursor: true })
-      .setDepth(16);
+      .setDepth(28);
     diffZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation?.();
       this.cycleDifficulty();
@@ -1161,9 +1204,14 @@ export class GameScene extends Phaser.Scene {
       this.pauseBtn.icon.setText(this.paused ? "\u25B6" : "\u23F8");
       this.drawControlButton(this.restartBtn, 0x3a2a18);
     }
-    // Tutorial "?" and difficulty toggle stay visible in both phases.
-    this.drawControlButton(this.tutorialBtn, this.tutorial.active ? 0x3a5a28 : 0x3a2a18);
-    this.drawDifficultyButton();
+    // Tutorial + difficulty live inside the pre-game modal. Hide them once
+    // the match begins so the HUD isn't cluttered with pre-game chrome.
+    this.setLabeledBtnVisible(this.tutorialBtn, this.tutorialBtnZone, inMenu);
+    this.setLabeledBtnVisible(this.difficultyBtn, this.difficultyBtnZone, inMenu);
+    if (inMenu) {
+      this.drawTutorialButton();
+      this.drawDifficultyButton();
+    }
   }
 
   private setBtnVisible(
@@ -1181,6 +1229,33 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private setLabeledBtnVisible(
+    btn: { bg: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text },
+    zone: Phaser.GameObjects.Zone,
+    visible: boolean,
+  ): void {
+    btn.bg.setVisible(visible);
+    btn.label.setVisible(visible);
+    if (visible) {
+      if (!zone.input?.enabled) zone.setInteractive({ useHandCursor: true });
+    } else {
+      btn.bg.clear();
+      if (zone.input?.enabled) zone.disableInteractive();
+    }
+  }
+
+  private drawTutorialButton(): void {
+    const x = this.tutorialBtn.bg.getData("x") as number;
+    const y = this.tutorialBtn.bg.getData("y") as number;
+    const w = this.tutorialBtn.bg.getData("w") as number;
+    const h = this.tutorialBtn.bg.getData("h") as number;
+    this.tutorialBtn.bg.clear();
+    this.tutorialBtn.bg.fillStyle(0x3a2a18, 0.95);
+    this.tutorialBtn.bg.fillRoundedRect(x, y, w, h, 10);
+    this.tutorialBtn.bg.lineStyle(2, 0xf5e8c8, 0.8);
+    this.tutorialBtn.bg.strokeRoundedRect(x, y, w, h, 10);
+  }
+
   private drawDifficultyButton(): void {
     const x = this.difficultyBtn.bg.getData("x") as number;
     const y = this.difficultyBtn.bg.getData("y") as number;
@@ -1188,7 +1263,7 @@ export class GameScene extends Phaser.Scene {
     const h = this.difficultyBtn.bg.getData("h") as number;
     const fill = this.difficulty === "hard" ? 0x6a2a18 : 0x2a3a28;
     this.difficultyBtn.bg.clear();
-    this.difficultyBtn.bg.fillStyle(fill, 0.9);
+    this.difficultyBtn.bg.fillStyle(fill, 0.95);
     this.difficultyBtn.bg.fillRoundedRect(x, y, w, h, 10);
     this.difficultyBtn.bg.lineStyle(2, 0xf5e8c8, 0.8);
     this.difficultyBtn.bg.strokeRoundedRect(x, y, w, h, 10);
@@ -1237,34 +1312,48 @@ export class GameScene extends Phaser.Scene {
   // ---------- UI: pre-game menu ----------
 
   private createMenuOverlay(): void {
+    // Full-screen dim + panel frame. Sits above the game but below the menu
+    // widgets so the title/Spread/buttons read as foreground.
+    this.menuBg = this.add.graphics().setDepth(24);
+
     this.titleText = this.add
       .text(0, 0, "Sporefall", {
-        fontSize: "96px",
+        fontSize: "72px",
         color: "#f8e8c0",
         fontStyle: "bold",
         fontFamily: "system-ui, sans-serif",
         align: "center",
         stroke: "#1b120a",
-        strokeThickness: 6,
+        strokeThickness: 5,
       })
       .setOrigin(0.5)
-      .setDepth(25);
+      .setDepth(26);
 
-    const bg = this.add.graphics().setDepth(25);
+    this.subtitleText = this.add
+      .text(0, 0, "Spread the colony. Push the front.", {
+        fontSize: "20px",
+        color: "#cdb98a",
+        fontFamily: "system-ui, sans-serif",
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setDepth(26);
+
+    const bg = this.add.graphics().setDepth(26);
     const label = this.add
       .text(0, 0, "Spread", {
-        fontSize: "40px",
+        fontSize: "36px",
         color: "#f8ecc8",
         fontStyle: "bold",
         fontFamily: "system-ui, sans-serif",
         align: "center",
       })
       .setOrigin(0.5)
-      .setDepth(26);
+      .setDepth(27);
     const zone = this.add
       .zone(0, 0, 10, 10)
       .setInteractive({ useHandCursor: true })
-      .setDepth(26);
+      .setDepth(27);
     zone.on(
       "pointerdown",
       (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
@@ -1278,9 +1367,12 @@ export class GameScene extends Phaser.Scene {
 
   private updateMenuOverlay(): void {
     const show = this.phase === "menu";
+    this.menuBg.setVisible(show);
     this.titleText.setVisible(show);
+    this.subtitleText.setVisible(show);
     this.spreadBtn.label.setVisible(show);
     if (!show) {
+      this.menuBg.clear();
       this.spreadBtn.bg.clear();
       if (this.spreadBtnZone.input?.enabled) this.spreadBtnZone.disableInteractive();
       return;
@@ -1288,7 +1380,19 @@ export class GameScene extends Phaser.Scene {
     if (!this.spreadBtnZone.input?.enabled) {
       this.spreadBtnZone.setInteractive({ useHandCursor: true });
     }
-    const rect = this.layout.spreadBtn;
+    const L = this.layout;
+
+    // Modal backdrop: dim the whole screen, then draw a framed panel.
+    this.menuBg.clear();
+    this.menuBg.fillStyle(0x1b120a, 0.72);
+    this.menuBg.fillRect(0, 0, L.W, L.H);
+    const panel = L.menuPanel;
+    this.menuBg.fillStyle(0x2a1c10, 0.96);
+    this.menuBg.fillRoundedRect(panel.x, panel.y, panel.w, panel.h, 16);
+    this.menuBg.lineStyle(2, 0xf5e8c8, 0.55);
+    this.menuBg.strokeRoundedRect(panel.x, panel.y, panel.w, panel.h, 16);
+
+    const rect = L.spreadBtn;
     const pulse = 0.7 + 0.3 * Math.sin(this.state.time * 2);
     this.spreadBtn.bg.clear();
     this.spreadBtn.bg.fillStyle(0x3a2a18, 0.95);
@@ -1305,16 +1409,21 @@ export class GameScene extends Phaser.Scene {
     this.state.time = 0;
     // Re-position anything that depends on per-phase visibility.
     this.applyLayout();
+    // Fires synchronously inside the Spread pointer handler so main.ts can
+    // kick off fullscreen+landscape as part of the same user gesture.
+    emitPhase(this.phase);
   }
 
   // ---------- UI: tutorial summary overlay (toggled via the "?" button) ----------
 
   private createSummaryOverlay(): void {
-    this.summaryBg = this.add.graphics().setDepth(22).setVisible(false);
+    // Summary sits above the menu modal (depth 24-28) so it reads as a
+    // foreground popup layered on top of the pre-game panel.
+    this.summaryBg = this.add.graphics().setDepth(30).setVisible(false);
 
     // Backdrop zone: blocks taps on underlying UI and dismisses the panel
     // when the player taps outside the Start button.
-    this.summaryBackdropZone = this.add.zone(0, 0, 10, 10).setDepth(22);
+    this.summaryBackdropZone = this.add.zone(0, 0, 10, 10).setDepth(30);
     this.summaryBackdropZone.on(
       "pointerdown",
       (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
@@ -1339,10 +1448,10 @@ export class GameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
-      .setDepth(23)
+      .setDepth(31)
       .setVisible(false);
 
-    const bg = this.add.graphics().setDepth(23).setVisible(false);
+    const bg = this.add.graphics().setDepth(31).setVisible(false);
     const label = this.add
       .text(0, 0, "Start Tutorial", {
         fontSize: "28px",
@@ -1352,11 +1461,11 @@ export class GameScene extends Phaser.Scene {
         align: "center",
       })
       .setOrigin(0.5)
-      .setDepth(24)
+      .setDepth(32)
       .setVisible(false);
     const zone = this.add
       .zone(0, 0, 10, 10)
-      .setDepth(24);
+      .setDepth(32);
     zone.on(
       "pointerdown",
       (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
@@ -1639,6 +1748,12 @@ export class GameScene extends Phaser.Scene {
     }
     this.restart();
   }
+}
+
+function emitPhase(phase: Phase): void {
+  window.dispatchEvent(
+    new CustomEvent<Phase>("sporefall:phase", { detail: phase }),
+  );
 }
 
 const DIFFICULTY_STORAGE_KEY = "sporefall.difficulty";

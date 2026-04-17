@@ -81,3 +81,43 @@ if (fsBtn) {
     }
   });
 }
+
+// Button is hidden during the pre-game menu (the Spread CTA handles the
+// fullscreen+landscape transition itself) and once the player is actually in
+// fullscreen landscape. It reappears mid-match as a fallback when the browser
+// couldn't honor the orientation lock (iOS Safari) or the user left fullscreen.
+type Phase = "menu" | "playing";
+let phase: Phase = "menu";
+
+const isLandscape = (): boolean => {
+  const type = screen.orientation?.type;
+  if (type) return type.startsWith("landscape");
+  return window.innerWidth > window.innerHeight;
+};
+
+const applyFsBtnVisibility = (): void => {
+  if (!fsBtn) return;
+  const inGame = phase === "playing";
+  const fullscreenLandscape = isFullscreen() && isLandscape();
+  fsBtn.classList.toggle("visible", inGame && !fullscreenLandscape);
+};
+
+window.addEventListener("sporefall:phase", (e) => {
+  const next = (e as CustomEvent<Phase>).detail;
+  const wasMenu = phase === "menu";
+  phase = next;
+  // Spread tap: try fullscreen+landscape on the way into the match. The browser
+  // requires this to happen inside the originating user gesture, but the scene
+  // dispatches synchronously from the pointer handler so we're still in scope.
+  if (wasMenu && next === "playing") {
+    void enterFullscreen().finally(applyFsBtnVisibility);
+  }
+  applyFsBtnVisibility();
+});
+
+document.addEventListener("fullscreenchange", applyFsBtnVisibility);
+document.addEventListener("webkitfullscreenchange", applyFsBtnVisibility);
+window.addEventListener("orientationchange", applyFsBtnVisibility);
+screen.orientation?.addEventListener?.("change", applyFsBtnVisibility);
+
+applyFsBtnVisibility();
