@@ -55,24 +55,37 @@ const STEPS: TutorialStep[] = [
   {
     id: "counters-intro",
     hint:
-      "COUNTERS  Hyphae smother Fruiting.\nRhizomorph dissolve Hyphae.\nFruiting burst Rhizomorph.\n\nWatch — the enemy just grew a Fruiting body.",
+      "COUNTERS  Hyphae smother Fruiting.\nRhizomorph dissolve Hyphae.\nFruiting burst Rhizomorph.\n\nWatch — the enemy just grew a Fruiting body.\n\nTap to continue.",
     setup: (state) => {
       build(state, "right", "fruiting");
       const spawned = state.right.slots.find((s) => s?.kind === "fruiting");
       if (spawned) spawned.timer = 0.5;
     },
-    isComplete: (_s, c) => c.timeInStep > 5,
+    isComplete: (_s, c) => c.tapped && c.timeInStep > 0.5,
   },
   {
     id: "counters-demo",
     hint:
-      "See the green haze on the enemy Fruiting?\nYour Hyphae are smothering it — its surge meter\ncharges slower and it can be shut down.",
-    isComplete: (_s, c) => c.timeInStep > 8,
+      "See the green haze on the enemy Fruiting?\nYour Hyphae are smothering it — its surge meter\ncharges slower and it can be shut down.\n\nTap to continue.",
+    isComplete: (_s, c) => c.tapped && c.timeInStep > 0.5,
   },
   {
-    id: "done",
+    id: "rhizo-intro",
     hint:
-      "That's the core loop: build, upgrade, counter.\nTap the restart button (top-right) to start a real match.",
+      "RHIZO  Now the enemy grew a Rhizomorph.\nWhen it goes active, it will dissolve\nyour Hyphae — its counter.\n\nTap to continue.",
+    setup: (state) => {
+      // Make sure the enemy can afford it, in case income hasn't accumulated.
+      if (state.right.nutrients < 40) state.right.nutrients = 40;
+      build(state, "right", "rhizomorph");
+      const spawned = state.right.slots.find((s) => s?.kind === "rhizomorph");
+      if (spawned) spawned.timer = 0.5;
+    },
+    isComplete: (_s, c) => c.tapped && c.timeInStep > 0.5,
+  },
+  {
+    id: "summary",
+    hint:
+      "QUICK RECAP\n\n• Build structures to push the front\n• Only one construction at a time\n• Upgrade pauses pressure\n• Don't get overrun\n\nTap the restart button (top-right) to start a real match.",
   },
 ];
 
