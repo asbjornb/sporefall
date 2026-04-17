@@ -121,6 +121,15 @@ function computeLayout(W: number, H: number): Layout {
   // there's room for proper spacing between rows and a mid-gap between sides.
   const uiScale = Math.max(0.45, Math.min(1.2, Math.min(W / 1280, H / 720)));
   const s = (n: number) => Math.round(n * uiScale);
+  // Canvas is rendered at DPR × the CSS viewport (see main.ts), so game-pixel
+  // sizes shrink visibly by 1/DPR on phones. `cssPx(n)` gives a game-pixel
+  // size that reads as `n` CSS pixels — useful for enforcing readable text
+  // and touch-friendly minimum hit sizes.
+  const dpr = Math.max(
+    1,
+    Math.min(3, typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1),
+  );
+  const cssPx = (n: number) => Math.round(n * dpr);
 
   const topBarH = s(76);
   // Leave real breathing room under the bottom slot row so the circles
@@ -214,9 +223,11 @@ function computeLayout(W: number, H: number): Layout {
   };
 
   // Pre-game modal: centered panel that houses the title, Spread CTA, and
-  // the tutorial/difficulty controls. The game world dims behind it.
-  const panelMaxW = s(560);
-  const panelMaxH = s(460);
+  // the tutorial/difficulty controls. The game world dims behind it. Use
+  // DPR-aware CSS-pixel minimums so the panel doesn't collapse to a postage
+  // stamp on high-DPI phones where uiScale floors near 0.45.
+  const panelMaxW = Math.max(s(560), cssPx(340));
+  const panelMaxH = Math.max(s(520), cssPx(420));
   const panelW = Math.min(W - s(32), panelMaxW);
   const panelH = Math.min(H - s(32), panelMaxH);
   const panelX = Math.round(W / 2 - panelW / 2);
@@ -224,23 +235,28 @@ function computeLayout(W: number, H: number): Layout {
   const menuPanel: BuildBtnRect = { x: panelX, y: panelY, w: panelW, h: panelH };
 
   const titleX = W / 2;
-  const titleY = Math.round(panelY + panelH * 0.22);
-  const subtitleY = Math.round(panelY + panelH * 0.36);
+  const titleY = Math.round(panelY + panelH * 0.18);
+  const subtitleY = Math.round(panelY + panelH * 0.32);
 
-  const spreadW = Math.min(Math.round(panelW * 0.65), s(300));
-  const spreadH = Math.max(s(60), Math.min(s(92), Math.round(panelH * 0.18)));
+  const spreadW = Math.max(cssPx(200), Math.min(Math.round(panelW * 0.7), s(320)));
+  const spreadH = Math.max(cssPx(56), Math.min(s(110), Math.round(panelH * 0.22)));
   const spreadBtn: BuildBtnRect = {
     x: Math.round(W / 2 - spreadW / 2),
-    y: Math.round(panelY + panelH * 0.5 - spreadH / 2),
+    y: Math.round(panelY + panelH * 0.55 - spreadH / 2),
     w: spreadW,
     h: spreadH,
   };
 
   // Bottom row inside the panel: "How to Play" on the left, difficulty toggle
-  // on the right. Both are full labeled buttons (not icons).
-  const menuBtnH = s(52);
+  // on the right. Enforce Material's 48dp (~48 CSS px) minimum hit target so
+  // they're tappable on phones, not just dense pixel rows.
+  const menuBtnH = Math.max(s(60), cssPx(48));
   const menuBtnGap = s(16);
-  const menuBtnW = Math.min(s(170), Math.round((panelW - s(48) - menuBtnGap) / 2));
+  const menuRowAvail = panelW - s(32);
+  const menuBtnW = Math.min(
+    Math.max(cssPx(130), s(200)),
+    Math.floor((menuRowAvail - menuBtnGap) / 2),
+  );
   const menuRowW = menuBtnW * 2 + menuBtnGap;
   const menuRowX = Math.round(W / 2 - menuRowW / 2);
   const menuRowY = Math.round(panelY + panelH - menuBtnH - s(28));
@@ -489,6 +505,12 @@ export class GameScene extends Phaser.Scene {
     const L = this.layout;
     const sc = L.uiScale;
     const px = (n: number) => `${Math.max(10, Math.round(n * sc))}px`;
+    // Menu text is drawn on the backing canvas (game px), then CSS-scaled to
+    // 1/DPR. On high-DPR phones that makes uiScale-only sizes read as ~6 CSS
+    // px. Force at least ~18 CSS px for menu labels by floor-ing at cssPx * DPR.
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const readablePx = (cssPx: number, scaled: number): string =>
+      `${Math.max(Math.round(cssPx * dpr), scaled)}px`;
 
     this.topText.setPosition(
       Math.max(16, Math.round(24 * sc)),
@@ -551,7 +573,7 @@ export class GameScene extends Phaser.Scene {
       .setData("w", tb.w)
       .setData("h", tb.h);
     this.tutorialBtn.label.setPosition(tb.x + tb.w / 2, tb.y + tb.h / 2);
-    this.tutorialBtn.label.setFontSize(px(20));
+    this.tutorialBtn.label.setFontSize(readablePx(18, Math.round(22 * sc)));
     this.tutorialBtnZone
       .setPosition(tb.x + tb.w / 2, tb.y + tb.h / 2)
       .setSize(tb.w, tb.h);
@@ -563,7 +585,7 @@ export class GameScene extends Phaser.Scene {
       .setData("w", db.w)
       .setData("h", db.h);
     this.difficultyBtn.label.setPosition(db.x + db.w / 2, db.y + db.h / 2);
-    this.difficultyBtn.label.setFontSize(px(20));
+    this.difficultyBtn.label.setFontSize(readablePx(18, Math.round(22 * sc)));
     this.difficultyBtnZone
       .setPosition(db.x + db.w / 2, db.y + db.h / 2)
       .setSize(db.w, db.h);
@@ -572,11 +594,11 @@ export class GameScene extends Phaser.Scene {
 
     if (this.titleText) {
       this.titleText.setPosition(L.titleX, L.titleY);
-      this.titleText.setFontSize(px(72));
+      this.titleText.setFontSize(readablePx(48, Math.round(72 * sc)));
     }
     if (this.subtitleText) {
       this.subtitleText.setPosition(L.titleX, L.subtitleY);
-      this.subtitleText.setFontSize(px(20));
+      this.subtitleText.setFontSize(readablePx(15, Math.round(20 * sc)));
     }
     if (this.spreadEl) {
       // Canvas backing store is rendered at DPR times the CSS viewport so
@@ -588,7 +610,7 @@ export class GameScene extends Phaser.Scene {
       this.spreadEl.style.top = `${sb.y * cssScale}px`;
       this.spreadEl.style.width = `${sb.w * cssScale}px`;
       this.spreadEl.style.height = `${sb.h * cssScale}px`;
-      this.spreadEl.style.fontSize = `${Math.max(18, Math.round(36 * sc * cssScale))}px`;
+      this.spreadEl.style.fontSize = `${Math.max(26, Math.round(40 * sc * cssScale))}px`;
     }
   }
 
