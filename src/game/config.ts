@@ -37,7 +37,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     color: 0x7a8a3a,
   },
   rhizomorph: {
-    cost: 35,
+    cost: 40,
     buildTime: 6,
     mutateTime: 8,
     mutateCost: 40,
