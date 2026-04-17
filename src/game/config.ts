@@ -37,11 +37,11 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     color: 0x7a8a3a,
   },
   rhizomorph: {
-    cost: 35,
+    cost: 40,
     buildTime: 6,
     mutateTime: 8,
     mutateCost: 40,
-    basePressure: 5,
+    basePressure: 4,
     incomeBonus: 0,
     label: "Rhizomorph",
     short: "Rhizo",
@@ -100,7 +100,7 @@ export const HYPHAE_SMOTHER_RATE = 9;
 export const HYPHAE_SMOTHER_SURGE_SLOW = 0.85;
 
 /** Rhizomorph dissolve rate (disable damage / second) at level 1 against non-hyphae targets. */
-export const RHIZO_DISSOLVE_RATE = 8;
+export const RHIZO_DISSOLVE_RATE = 6;
 /** Multiplier vs hyphae targets. */
 export const RHIZO_DISSOLVE_VS_HYPHAE = 3;
 
