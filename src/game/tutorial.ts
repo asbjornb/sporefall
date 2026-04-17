@@ -27,11 +27,21 @@ function hasUpgradedPlayerStructure(state: GameState): boolean {
   );
 }
 
+// Info-heavy steps wait a beat before accepting the advance tap, so a stray
+// tap from the previous step can't skip the text before it's even readable.
+const MIN_READ_TIME = 1.5;
+const TAP_HINT = "\n\nTap anywhere to continue.";
+
+function hasPlayerRhizomorph(state: GameState): boolean {
+  return state.left.slots.some((s) => s != null && s.kind === "rhizomorph");
+}
+
 const STEPS: TutorialStep[] = [
   {
     id: "goal",
     hint:
-      "GOAL  Destroy the orange heart on the right.\nProtect your green heart on the left.\n\nTap anywhere to continue.",
+      "GOAL  Destroy the orange heart on the right.\nProtect your green heart on the left." +
+      TAP_HINT,
     isComplete: (_s, c) => c.tapped,
   },
   {
@@ -55,24 +65,41 @@ const STEPS: TutorialStep[] = [
   {
     id: "counters-intro",
     hint:
-      "COUNTERS  Hyphae smother Fruiting.\nRhizomorph dissolve Hyphae.\nFruiting burst Rhizomorph.\n\nWatch — the enemy just grew a Fruiting body.",
+      "COUNTERS  Hyphae smother Fruiting.\nThe enemy just grew a Fruiting body — watch the\ngreen haze as your Hyphae shut it down." +
+      TAP_HINT,
     setup: (state) => {
       build(state, "right", "fruiting");
       const spawned = state.right.slots.find((s) => s?.kind === "fruiting");
       if (spawned) spawned.timer = 0.5;
     },
-    isComplete: (_s, c) => c.timeInStep > 5,
+    isComplete: (_s, c) => c.timeInStep > MIN_READ_TIME && c.tapped,
   },
   {
-    id: "counters-demo",
+    id: "rhizo-build",
     hint:
-      "See the green haze on the enemy Fruiting?\nYour Hyphae are smothering it — its surge meter\ncharges slower and it can be shut down.",
-    isComplete: (_s, c) => c.timeInStep > 8,
+      "RHIZOMORPH  Rhizo dissolves Hyphae.\nThe enemy swapped to Hyphae — build a Rhizomorph\n(40 nutrients) to see the dissolve line in action.",
+    setup: (state) => {
+      // Clear enemy slots so the previous Fruiting doesn't surge mid-lesson.
+      for (let i = 0; i < state.right.slots.length; i++) {
+        state.right.slots[i] = null;
+      }
+      build(state, "right", "hyphae");
+      const spawned = state.right.slots.find((s) => s?.kind === "hyphae");
+      if (spawned) spawned.timer = 0.5;
+    },
+    isComplete: hasPlayerRhizomorph,
+  },
+  {
+    id: "rps-closeout",
+    hint:
+      "CLOSES THE LOOP  Fruiting bursts Rhizomorph.\nHyphae \u25B6 Fruiting \u25B6 Rhizo \u25B6 Hyphae.\nCounter whatever the enemy leans on." +
+      TAP_HINT,
+    isComplete: (_s, c) => c.timeInStep > MIN_READ_TIME && c.tapped,
   },
   {
     id: "done",
     hint:
-      "That's the core loop: build, upgrade, counter.\nTap the restart button (top-right) to start a real match.",
+      "SUMMARY\n\u2022 Build structures to push the front\n\u2022 Only one construction at a time\n\u2022 Upgrade pauses pressure\n\u2022 Don't get overrun\n\nTap the restart button (top-right) for a real match.",
   },
 ];
 
