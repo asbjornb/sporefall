@@ -103,6 +103,70 @@ const MONO_KINDS: StructureKind[] = [
   "decomposer",
 ];
 
+/**
+ * Walks a fixed build list, then fills remaining slots with a tail kind.
+ * Upgrades prefer tail > opener order. Used for scripted openers like
+ * "2 hyphae into fruiting".
+ */
+class ScriptedAgent implements Agent {
+  private cooldown = 0;
+  private step = 0;
+  constructor(
+    private readonly side: Side,
+    private readonly sequence: StructureKind[],
+    private readonly tail: StructureKind,
+  ) {}
+
+  private nextKind(): StructureKind {
+    return this.step < this.sequence.length
+      ? this.sequence[this.step]
+      : this.tail;
+  }
+
+  update(state: GameState, dt: number): void {
+    if (state.winner || state.countdown > 0) return;
+    this.cooldown -= dt;
+    if (this.cooldown > 0) return;
+
+    const colony = state[this.side];
+    if (colony.slots.some((s) => s && s.status === "growing")) return;
+
+    const kind = this.nextKind();
+    if (canBuild(state, this.side, kind)) {
+      if (build(state, this.side, kind)) {
+        this.step++;
+        this.cooldown = 0.4;
+        return;
+      }
+      // Keep saving for the scripted kind — don't deviate.
+      return;
+    }
+
+    // All slots full? Upgrade tail first, then opener kinds in sequence order.
+    const priority: StructureKind[] = [
+      this.tail,
+      ...this.sequence.filter((k) => k !== this.tail),
+    ];
+    for (const pk of priority) {
+      let bestIdx: number | null = null;
+      let bestLevel = Infinity;
+      for (let i = 0; i < colony.slots.length; i++) {
+        const s = colony.slots[i];
+        if (!s || s.kind !== pk) continue;
+        if (!canMutate(state, this.side, i)) continue;
+        if (s.level < bestLevel) {
+          bestLevel = s.level;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx !== null && mutate(state, this.side, bestIdx)) {
+        this.cooldown = 0.4;
+        return;
+      }
+    }
+  }
+}
+
 const STRATEGIES: Strategy[] = [
   ...MONO_KINDS.map<Strategy>((k) => ({
     name: `mono-${k}`,
@@ -111,6 +175,13 @@ const STRATEGIES: Strategy[] = [
   {
     name: "hyphae-rush",
     make: (side) => new MonoAgent(side, "hyphae", false),
+  },
+  {
+    // Realistic opener: 2 hyphae for early pressure & smother vs fruiting,
+    // transition into fruiting for surge-based offense.
+    name: "hh-fruit",
+    make: (side) =>
+      new ScriptedAgent(side, ["hyphae", "hyphae"], "fruiting"),
   },
   {
     name: "hard-ai",
