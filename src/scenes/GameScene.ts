@@ -18,7 +18,12 @@ import {
   pressureOf,
   step,
 } from "../game/sim";
+import { TutorialDirector } from "../game/tutorial";
 import type { GameState, Side, Structure, StructureKind } from "../game/types";
+
+export interface GameSceneData {
+  tutorial?: boolean;
+}
 
 const LEFT_TINT = 0x9bb04a;
 const RIGHT_TINT = 0xc46a3a;
@@ -70,6 +75,7 @@ interface Layout {
   buildBtns: BuildBtnRect[];
   pauseBtn: ControlBtnRect;
   restartBtn: ControlBtnRect;
+  tutorialBtn: ControlBtnRect;
 }
 
 function desaturate(hex: number, amount: number): number {
@@ -159,6 +165,11 @@ function computeLayout(W: number, H: number): Layout {
     y: ctrlMargin,
     size: ctrlSize,
   };
+  const tutorialBtn: ControlBtnRect = {
+    x: pauseBtn.x - ctrlSize - ctrlGap,
+    y: ctrlMargin,
+    size: ctrlSize,
+  };
 
   return {
     W,
@@ -180,6 +191,7 @@ function computeLayout(W: number, H: number): Layout {
     buildBtns,
     pauseBtn,
     restartBtn,
+    tutorialBtn,
   };
 }
 
@@ -208,6 +220,13 @@ export class GameScene extends Phaser.Scene {
     bg: Phaser.GameObjects.Graphics;
     icon: Phaser.GameObjects.Text;
   };
+  private tutorialBtn!: {
+    bg: Phaser.GameObjects.Graphics;
+    icon: Phaser.GameObjects.Text;
+  };
+  private tutorialBtnZone!: Phaser.GameObjects.Zone;
+  private tutorial!: TutorialDirector;
+  private hintText!: Phaser.GameObjects.Text;
   private slotHit: Phaser.GameObjects.Arc[] = [];
   private selectedSlotIdx: number | null = null;
   /** Per-slot shake timer for the player's side, used to flash a denied tap on disabled. */
@@ -226,10 +245,20 @@ export class GameScene extends Phaser.Scene {
     super("game");
   }
 
+  init(data: GameSceneData): void {
+    this.tutorial = new TutorialDirector(!!data?.tutorial);
+  }
+
   create(): void {
     this.state = createGameState();
     this.ai = new SimpleAI("right");
     this.layout = computeLayout(this.scale.width, this.scale.height);
+
+    if (this.tutorial.active) {
+      // Tutorial mode: skip countdown, grant ample nutrients, keep enemy passive.
+      this.state.countdown = 0;
+      this.state.left.nutrients = 200;
+    }
 
     this.bg = this.add.graphics();
     this.fx = this.add.graphics();
@@ -273,6 +302,22 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(20);
 
+    this.hintText = this.add
+      .text(0, 0, "", {
+        fontSize: "22px",
+        color: "#f5e8c8",
+        fontFamily: "system-ui, sans-serif",
+        align: "center",
+        stroke: "#1b120a",
+        strokeThickness: 4,
+        backgroundColor: "rgba(27,18,10,0.75)",
+        padding: { x: 14, y: 10 },
+        lineSpacing: 4,
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(18)
+      .setVisible(false);
+
     this.createBackgroundZone();
     this.createBuildButtons();
     this.createSlotHitAreas();
@@ -292,6 +337,7 @@ export class GameScene extends Phaser.Scene {
     // Any tap/click after the game is over restarts — mobile-friendly.
     this.input.on("pointerdown", () => {
       if (this.state.winner) this.restart();
+      if (this.tutorial.active) this.tutorial.registerTap();
     });
   }
 
@@ -362,6 +408,14 @@ export class GameScene extends Phaser.Scene {
       .setPosition(rb.x + rb.size / 2, rb.y + rb.size / 2)
       .setSize(rb.size, rb.size);
 
+    const tb = L.tutorialBtn;
+    this.tutorialBtn.bg.setData("x", tb.x).setData("y", tb.y).setData("size", tb.size);
+    this.tutorialBtn.icon.setPosition(tb.x + tb.size / 2, tb.y + tb.size / 2);
+    this.tutorialBtn.icon.setFontSize(px(34));
+    this.tutorialBtnZone
+      .setPosition(tb.x + tb.size / 2, tb.y + tb.size / 2)
+      .setSize(tb.size, tb.size);
+
     this.upgradeBtnLabel.setFontSize(px(18));
   }
 
@@ -369,7 +423,11 @@ export class GameScene extends Phaser.Scene {
     const dt = Math.min(0.1, deltaMs / 1000);
     if (!this.state.winner && !this.paused) {
       step(this.state, dt);
-      this.ai.update(this.state, dt);
+      if (this.tutorial.active) {
+        this.tutorial.update(this.state, dt);
+      } else {
+        this.ai.update(this.state, dt);
+      }
     }
     for (let i = 0; i < this.slotShake.length; i++) {
       if (this.slotShake[i] > 0) {
@@ -397,6 +455,7 @@ export class GameScene extends Phaser.Scene {
     this.updateCountdown();
     this.updatePausedOverlay();
     this.updateControlButtons();
+    this.updateTutorialHint();
   }
 
   private slotPosFor(side: Side, slotIdx: number): SlotSpec {
@@ -851,12 +910,57 @@ export class GameScene extends Phaser.Scene {
     });
     this.restartBtn = { bg: restartBg, icon: restartIcon };
     this.restartBtnZone = restartZone;
+
+    const tutorialBg = this.add.graphics().setDepth(15);
+    const tutorialIcon = this.add
+      .text(0, 0, "?", {
+        fontSize: "34px",
+        color: "#f8ecc8",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+      })
+      .setOrigin(0.5)
+      .setDepth(16);
+    const tutorialZone = this.add
+      .zone(0, 0, 10, 10)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(16);
+    tutorialZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation?.();
+      this.startTutorial();
+    });
+    this.tutorialBtn = { bg: tutorialBg, icon: tutorialIcon };
+    this.tutorialBtnZone = tutorialZone;
   }
 
   private updateControlButtons(): void {
     this.drawControlButton(this.pauseBtn, this.paused ? 0x3a5a28 : 0x3a2a18);
     this.pauseBtn.icon.setText(this.paused ? "\u25B6" : "\u23F8");
     this.drawControlButton(this.restartBtn, 0x3a2a18);
+    this.drawControlButton(this.tutorialBtn, this.tutorial.active ? 0x3a5a28 : 0x3a2a18);
+  }
+
+  private updateTutorialHint(): void {
+    if (!this.tutorial.active) {
+      this.hintText.setVisible(false);
+      return;
+    }
+    const msg = this.tutorial.currentHint();
+    if (!msg) {
+      this.hintText.setVisible(false);
+      return;
+    }
+    const L = this.layout;
+    const sc = L.uiScale;
+    this.hintText
+      .setVisible(true)
+      .setText(msg)
+      .setFontSize(`${Math.max(14, Math.round(20 * sc))}px`)
+      .setPosition(L.W / 2, Math.round(90 * sc));
+  }
+
+  private startTutorial(): void {
+    this.scene.restart({ tutorial: true } satisfies GameSceneData);
   }
 
   private drawControlButton(
@@ -1060,9 +1164,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
-    this.state = createGameState();
-    this.ai = new SimpleAI("right");
-    this.paused = false;
-    this.selectedSlotIdx = null;
+    // Restart cleanly via the scene lifecycle so tutorial mode is fully exited
+    // (init data defaults to a normal match).
+    this.scene.restart({} satisfies GameSceneData);
   }
 }
