@@ -315,6 +315,15 @@ export class GameScene extends Phaser.Scene {
   private tutorialBtnZone!: Phaser.GameObjects.Zone;
   private tutorial!: TutorialDirector;
   private hintText!: Phaser.GameObjects.Text;
+  private summaryBg!: Phaser.GameObjects.Graphics;
+  private summaryText!: Phaser.GameObjects.Text;
+  private summaryStartBtn!: {
+    bg: Phaser.GameObjects.Graphics;
+    label: Phaser.GameObjects.Text;
+  };
+  private summaryStartZone!: Phaser.GameObjects.Zone;
+  private summaryBackdropZone!: Phaser.GameObjects.Zone;
+  private summaryVisible = false;
   private difficultyBtn!: {
     bg: Phaser.GameObjects.Graphics;
     label: Phaser.GameObjects.Text;
@@ -350,6 +359,7 @@ export class GameScene extends Phaser.Scene {
     this.slotShake = new Array(SLOT_COUNT).fill(0);
     this.selectedSlotIdx = null;
     this.paused = false;
+    this.summaryVisible = false;
     // Tutorials skip the menu and go straight to play; a fresh match (or
     // restart via the in-game button) also jumps back into play. Only the
     // very first load — triggered from BootScene — lands on the menu.
@@ -434,6 +444,7 @@ export class GameScene extends Phaser.Scene {
     this.createControlButtons();
     this.createRpsLegend();
     this.createMenuOverlay();
+    this.createSummaryOverlay();
     this.applyLayout();
 
     this.scale.on("resize", this.onResize, this);
@@ -597,6 +608,7 @@ export class GameScene extends Phaser.Scene {
     this.updateControlButtons();
     this.updateTutorialHint();
     this.updateMenuOverlay();
+    this.updateSummaryOverlay();
   }
 
   private drawSlotDivider(): void {
@@ -1107,7 +1119,11 @@ export class GameScene extends Phaser.Scene {
       .setDepth(16);
     tutorialZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation?.();
-      this.startTutorial();
+      if (this.tutorial.active) {
+        this.startTutorial();
+        return;
+      }
+      this.summaryVisible = !this.summaryVisible;
     });
     this.tutorialBtn = { bg: tutorialBg, icon: tutorialIcon };
     this.tutorialBtnZone = tutorialZone;
@@ -1289,6 +1305,134 @@ export class GameScene extends Phaser.Scene {
     this.state.time = 0;
     // Re-position anything that depends on per-phase visibility.
     this.applyLayout();
+  }
+
+  // ---------- UI: tutorial summary overlay (toggled via the "?" button) ----------
+
+  private createSummaryOverlay(): void {
+    this.summaryBg = this.add.graphics().setDepth(22).setVisible(false);
+
+    // Backdrop zone: blocks taps on underlying UI and dismisses the panel
+    // when the player taps outside the Start button.
+    this.summaryBackdropZone = this.add.zone(0, 0, 10, 10).setDepth(22);
+    this.summaryBackdropZone.on(
+      "pointerdown",
+      (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
+        e.stopPropagation?.();
+        this.summaryVisible = false;
+      },
+    );
+
+    this.summaryText = this.add
+      .text(
+        0,
+        0,
+        "HOW TO PLAY\n\n\u2022 Build structures to push the front\n\u2022 Only one construction at a time\n\u2022 Upgrade pauses pressure\n\u2022 Don't get overrun\n\nHyphae \u25B6 Fruiting \u25B6 Rhizo \u25B6 Hyphae",
+        {
+          fontSize: "22px",
+          color: "#f5e8c8",
+          fontFamily: "system-ui, sans-serif",
+          align: "center",
+          stroke: "#1b120a",
+          strokeThickness: 3,
+          lineSpacing: 6,
+        },
+      )
+      .setOrigin(0.5)
+      .setDepth(23)
+      .setVisible(false);
+
+    const bg = this.add.graphics().setDepth(23).setVisible(false);
+    const label = this.add
+      .text(0, 0, "Start Tutorial", {
+        fontSize: "28px",
+        color: "#f8ecc8",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setDepth(24)
+      .setVisible(false);
+    const zone = this.add
+      .zone(0, 0, 10, 10)
+      .setDepth(24);
+    zone.on(
+      "pointerdown",
+      (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
+        e.stopPropagation?.();
+        this.summaryVisible = false;
+        this.startTutorial();
+      },
+    );
+    this.summaryStartBtn = { bg, label };
+    this.summaryStartZone = zone;
+  }
+
+  private updateSummaryOverlay(): void {
+    const show = this.summaryVisible && !this.tutorial.active;
+    this.summaryBg.setVisible(show);
+    this.summaryText.setVisible(show);
+    this.summaryStartBtn.bg.setVisible(show);
+    this.summaryStartBtn.label.setVisible(show);
+    if (!show) {
+      if (this.summaryStartZone.input?.enabled) {
+        this.summaryStartZone.disableInteractive();
+      }
+      if (this.summaryBackdropZone.input?.enabled) {
+        this.summaryBackdropZone.disableInteractive();
+      }
+      this.summaryBg.clear();
+      this.summaryStartBtn.bg.clear();
+      return;
+    }
+    if (!this.summaryStartZone.input?.enabled) {
+      this.summaryStartZone.setInteractive({ useHandCursor: true });
+    }
+    const L = this.layout;
+    const sc = L.uiScale;
+    const px = (n: number) => `${Math.max(12, Math.round(n * sc))}px`;
+
+    // Full-screen backdrop catches taps outside the button so they dismiss
+    // the panel instead of hitting build/pause/restart buttons beneath it.
+    this.summaryBackdropZone
+      .setPosition(L.W / 2, L.H / 2)
+      .setSize(L.W, L.H);
+    if (!this.summaryBackdropZone.input?.enabled) {
+      this.summaryBackdropZone.setInteractive();
+    }
+
+    // Dim the whole screen so the panel reads as modal.
+    this.summaryBg.clear();
+    this.summaryBg.fillStyle(0x1b120a, 0.72);
+    this.summaryBg.fillRect(0, 0, L.W, L.H);
+
+    const panelW = Math.min(L.W - Math.round(40 * sc), Math.round(620 * sc));
+    const panelH = Math.round(360 * sc);
+    const panelX = Math.round(L.W / 2 - panelW / 2);
+    const panelY = Math.round(L.H / 2 - panelH / 2);
+    this.summaryBg.fillStyle(0x2a1c10, 0.96);
+    this.summaryBg.fillRoundedRect(panelX, panelY, panelW, panelH, 14);
+    this.summaryBg.lineStyle(2, 0xf5e8c8, 0.6);
+    this.summaryBg.strokeRoundedRect(panelX, panelY, panelW, panelH, 14);
+
+    this.summaryText.setPosition(L.W / 2, panelY + Math.round(panelH * 0.42));
+    this.summaryText.setFontSize(px(20));
+
+    const btnW = Math.round(panelW * 0.55);
+    const btnH = Math.round(56 * sc);
+    const btnX = Math.round(L.W / 2 - btnW / 2);
+    const btnY = Math.round(panelY + panelH - btnH - Math.round(24 * sc));
+    this.summaryStartBtn.bg.clear();
+    this.summaryStartBtn.bg.fillStyle(0x3a5a28, 0.95);
+    this.summaryStartBtn.bg.fillRoundedRect(btnX, btnY, btnW, btnH, 10);
+    this.summaryStartBtn.bg.lineStyle(2, 0xf5e8c8, 0.8);
+    this.summaryStartBtn.bg.strokeRoundedRect(btnX, btnY, btnW, btnH, 10);
+    this.summaryStartBtn.label.setPosition(btnX + btnW / 2, btnY + btnH / 2);
+    this.summaryStartBtn.label.setFontSize(px(24));
+    this.summaryStartZone
+      .setPosition(btnX + btnW / 2, btnY + btnH / 2)
+      .setSize(btnW, btnH);
   }
 
   private createRpsLegend(): void {
