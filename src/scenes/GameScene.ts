@@ -113,7 +113,9 @@ function computeLayout(W: number, H: number): Layout {
   const s = (n: number) => Math.round(n * uiScale);
 
   const topBarH = s(76);
-  const bottomPad = s(8);
+  // Leave real breathing room under the bottom slot row so the circles
+  // don't visually touch the screen edge on phones.
+  const bottomPad = s(22);
 
   // Slots region (2 rows) sits near the bottom, where the build bar used to be.
   const slotRadius = s(28);
@@ -132,8 +134,10 @@ function computeLayout(W: number, H: number): Layout {
   const headroom = hpBarOffsetAboveLog + hpBarH + legendRowH + s(4);
 
   // Build buttons stacked vertically along the left edge, aligned with the log.
+  // Leave a visible gap between the last button and the slot row so the
+  // bottom button's text isn't flush against the slot circles.
   const buildBarTop = topBarH + headroom;
-  const buildBarBottom = slotAreaTop - s(10);
+  const buildBarBottom = slotAreaTop - s(22);
   const buildBarH = buildBarBottom - buildBarTop;
   const btnGap = s(20);
   const btnH = Math.max(s(72), Math.min(s(150), Math.floor((buildBarH - btnGap * 3) / 4)));
@@ -157,7 +161,7 @@ function computeLayout(W: number, H: number): Layout {
   const logRight = W - rightMargin;
   const logTop = buildBarTop;
   // Shrink the log a bit vertically so the slot area can breathe.
-  const logBottom = Math.min(buildBarBottom, logTop + Math.round(H * 0.5));
+  const logBottom = Math.min(buildBarBottom, logTop + Math.round(H * 0.46));
   const logW = logRight - logLeft;
   const logH = Math.max(s(110), logBottom - logTop);
 
@@ -443,9 +447,9 @@ export class GameScene extends Phaser.Scene {
       entry.container.setData("y", rect.y);
       entry.container.setData("w", rect.w);
       entry.container.setData("h", rect.h);
-      entry.title.setPosition(rect.x + rect.w / 2, rect.y + rect.h * 0.25);
+      entry.title.setPosition(rect.x + rect.w / 2, rect.y + rect.h * 0.22);
       entry.title.setFontSize(px(22));
-      entry.detail.setPosition(rect.x + rect.w / 2, rect.y + rect.h * 0.68);
+      entry.detail.setPosition(rect.x + rect.w / 2, rect.y + rect.h * 0.63);
       entry.detail.setFontSize(px(18));
       const zone = this.buildBtnZones[i];
       zone.setPosition(rect.x + rect.w / 2, rect.y + rect.h / 2);
