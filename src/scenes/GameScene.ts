@@ -579,12 +579,16 @@ export class GameScene extends Phaser.Scene {
       this.subtitleText.setFontSize(px(20));
     }
     if (this.spreadEl) {
+      // Canvas backing store is rendered at DPR times the CSS viewport so
+      // everything reads crisp on high-DPI screens (see main.ts). The native
+      // <button> lives in CSS pixels, so convert game-pixel layout coords back.
+      const cssScale = window.innerWidth / L.W;
       const sb = L.spreadBtn;
-      this.spreadEl.style.left = `${sb.x}px`;
-      this.spreadEl.style.top = `${sb.y}px`;
-      this.spreadEl.style.width = `${sb.w}px`;
-      this.spreadEl.style.height = `${sb.h}px`;
-      this.spreadEl.style.fontSize = `${Math.max(18, Math.round(36 * sc))}px`;
+      this.spreadEl.style.left = `${sb.x * cssScale}px`;
+      this.spreadEl.style.top = `${sb.y * cssScale}px`;
+      this.spreadEl.style.width = `${sb.w * cssScale}px`;
+      this.spreadEl.style.height = `${sb.h * cssScale}px`;
+      this.spreadEl.style.fontSize = `${Math.max(18, Math.round(36 * sc * cssScale))}px`;
     }
   }
 
@@ -1188,10 +1192,11 @@ export class GameScene extends Phaser.Scene {
       this.drawControlButton(this.restartBtn, 0x3a2a18);
     }
     // Tutorial + difficulty live inside the pre-game modal. Hide them once
-    // the match begins so the HUD isn't cluttered with pre-game chrome.
-    this.setLabeledBtnVisible(this.tutorialBtn, this.tutorialBtnZone, inMenu);
-    this.setLabeledBtnVisible(this.difficultyBtn, this.difficultyBtnZone, inMenu);
-    if (inMenu) {
+    // the match begins, and while the HOW TO PLAY modal is open on top.
+    const showMenuBtns = inMenu && !this.summaryVisible;
+    this.setLabeledBtnVisible(this.tutorialBtn, this.tutorialBtnZone, showMenuBtns);
+    this.setLabeledBtnVisible(this.difficultyBtn, this.difficultyBtnZone, showMenuBtns);
+    if (showMenuBtns) {
       this.drawTutorialButton();
       this.drawDifficultyButton();
     }
@@ -1334,7 +1339,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateMenuOverlay(): void {
-    const show = this.phase === "menu";
+    // Hide the pre-game panel while the HOW TO PLAY modal is open so its
+    // title/Spread/CTA row don't bleed through the summary.
+    const show = this.phase === "menu" && !this.summaryVisible;
     this.menuBg.setVisible(show);
     this.titleText.setVisible(show);
     this.subtitleText.setVisible(show);
@@ -1393,7 +1400,7 @@ export class GameScene extends Phaser.Scene {
       .text(
         0,
         0,
-        "HOW TO PLAY\n\n\u2022 Build structures to push the front\n\u2022 Only one construction at a time\n\u2022 Upgrade pauses pressure\n\u2022 Don't get overrun\n\nHyphae \u25B6 Fruiting \u25B6 Rhizo \u25B6 Hyphae",
+        "HOW TO PLAY\n\n\u2022 Build structures to push the front\n\u2022 Only one construction at a time\n\u2022 Upgrade pauses pressure\n\u2022 Don't get overrun",
         {
           fontSize: "22px",
           color: "#f5e8c8",
