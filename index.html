@@ -54,11 +54,14 @@
       #spread-btn {
         position: fixed;
         display: none;
+        align-items: center;
+        justify-content: center;
         box-sizing: border-box;
         background: rgba(58, 42, 24, 0.95);
         color: #f8ecc8;
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         font-weight: bold;
+        line-height: 1;
         border: 3px solid rgba(155, 176, 74, 0.85);
         border-radius: 14px;
         cursor: pointer;
@@ -67,7 +70,7 @@
         -webkit-tap-highlight-color: transparent;
       }
       #spread-btn.visible {
-        display: block;
+        display: flex;
         animation: spreadPulse 2.8s ease-in-out infinite;
       }
       #spread-btn:hover {

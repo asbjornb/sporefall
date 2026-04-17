@@ -105,13 +105,9 @@ if (fsBtn) {
   });
 }
 
-// Button is hidden during the pre-game menu (the Spread CTA handles the
-// fullscreen+landscape transition itself) and once the player is actually in
-// fullscreen landscape. It reappears mid-match as a fallback when the browser
-// couldn't honor the orientation lock (iOS Safari) or the user left fullscreen.
-type Phase = "menu" | "playing";
-let phase: Phase = "menu";
-
+// Button stays visible in the menu so players can enter fullscreen+landscape
+// before tapping Spread, and as a mid-match fallback when the browser couldn't
+// honor the orientation lock (iOS Safari) or the user left fullscreen.
 const isLandscape = (): boolean => {
   const type = screen.orientation?.type;
   if (type) return type.startsWith("landscape");
@@ -120,15 +116,9 @@ const isLandscape = (): boolean => {
 
 const applyFsBtnVisibility = (): void => {
   if (!fsBtn) return;
-  const inGame = phase === "playing";
   const fullscreenLandscape = isFullscreen() && isLandscape();
-  fsBtn.classList.toggle("visible", inGame && !fullscreenLandscape);
+  fsBtn.classList.toggle("visible", !fullscreenLandscape);
 };
-
-window.addEventListener("sporefall:phase", (e) => {
-  phase = (e as CustomEvent<Phase>).detail;
-  applyFsBtnVisibility();
-});
 
 document.addEventListener("fullscreenchange", applyFsBtnVisibility);
 document.addEventListener("webkitfullscreenchange", applyFsBtnVisibility);
