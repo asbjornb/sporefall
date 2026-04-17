@@ -304,6 +304,15 @@ export class GameScene extends Phaser.Scene {
 
   init(data: GameSceneData): void {
     this.tutorial = new TutorialDirector(!!data?.tutorial);
+    // Phaser's scene.restart reuses the same Scene instance, so class-field
+    // initializers don't re-run. Any array/state we push into from create()
+    // must be reset here or it will accumulate stale entries after a restart.
+    this.buildBtns = [];
+    this.buildBtnZones = [];
+    this.slotHit = [];
+    this.slotShake = new Array(SLOT_COUNT).fill(0);
+    this.selectedSlotIdx = null;
+    this.paused = false;
   }
 
   create(): void {
