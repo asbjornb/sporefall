@@ -95,10 +95,6 @@ interface Layout {
   /** AI difficulty toggle — lives inside the menu panel. */
   difficultyBtn: DifficultyBtnRect;
   hpBarOffsetAboveLog: number;
-  /** Horizontal center for the RPS legend (above the log). */
-  rpsLegendX: number;
-  /** Y position for the RPS legend (between top controls and HP bars). */
-  rpsLegendY: number;
   /** Center position for the pre-game title (inside the menu panel). */
   titleX: number;
   titleY: number;
@@ -139,13 +135,10 @@ function computeLayout(W: number, H: number): Layout {
   const row0Y = slotAreaTop + slotRadius + s(4);
   const row1Y = row0Y + slotRowGap;
 
-  // Headroom above the log: a dedicated row for the RPS legend on top, then
-  // the HP bar just above the log. Reclaimed from the log itself so the
-  // legend always has room even on phones.
+  // Headroom above the log: the HP bar sits just above it.
   const hpBarOffsetAboveLog = s(16);
   const hpBarH = Math.max(6, Math.round(12 * uiScale));
-  const legendRowH = s(20);
-  const headroom = hpBarOffsetAboveLog + hpBarH + legendRowH + s(4);
+  const headroom = hpBarOffsetAboveLog + hpBarH + s(4);
 
   // Build buttons stacked vertically along the left edge, aligned with the log.
   // Leave a visible gap between the last button and the slot row so the
@@ -206,7 +199,9 @@ function computeLayout(W: number, H: number): Layout {
   // play so the HUD stays uncluttered.
   const ctrlSize = s(56);
   const ctrlGap = s(10);
-  const ctrlMargin = s(12);
+  // Keep a visible gap from the screen edges even on small phones where
+  // s(n) shrinks aggressively — otherwise the buttons kiss the corner.
+  const ctrlMargin = Math.max(16, s(16));
   const restartBtn: ControlBtnRect = {
     x: W - ctrlSize - ctrlMargin,
     y: ctrlMargin,
@@ -217,11 +212,6 @@ function computeLayout(W: number, H: number): Layout {
     y: ctrlMargin,
     size: ctrlSize,
   };
-
-  // RPS legend sits in the top slice of the headroom, centered above the log,
-  // so it never collides with the HP bars (which live in the bottom slice).
-  const rpsLegendX = (logLeft + logRight) / 2;
-  const rpsLegendY = logTop - (hpBarOffsetAboveLog + hpBarH + legendRowH);
 
   // Pre-game modal: centered panel that houses the title, Spread CTA, and
   // the tutorial/difficulty controls. The game world dims behind it.
@@ -293,8 +283,6 @@ function computeLayout(W: number, H: number): Layout {
     tutorialBtn,
     difficultyBtn,
     hpBarOffsetAboveLog,
-    rpsLegendX,
-    rpsLegendY,
     titleX,
     titleY,
     subtitleY,
@@ -364,7 +352,6 @@ export class GameScene extends Phaser.Scene {
   private selectedSlotIdx: number | null = null;
   /** Per-slot shake timer for the player's side, used to flash a denied tap on disabled. */
   private slotShake: number[] = new Array(SLOT_COUNT).fill(0);
-  private rpsLegend!: Phaser.GameObjects.Text;
   private upgradeBtnBg!: Phaser.GameObjects.Graphics;
   private upgradeBtnLabel!: Phaser.GameObjects.Text;
   private upgradeBtnZone!: Phaser.GameObjects.Zone;
@@ -473,7 +460,6 @@ export class GameScene extends Phaser.Scene {
     this.createSlotHitAreas();
     this.createUpgradeButton();
     this.createControlButtons();
-    this.createRpsLegend();
     this.createMenuOverlay();
     this.createSummaryOverlay();
     this.applyLayout();
@@ -486,9 +472,10 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-R", () => this.restart());
     this.input.keyboard?.on("keydown-P", () => this.togglePause());
     this.input.keyboard?.on("keydown-SPACE", () => this.togglePause());
-    // Any tap/click after the game is over restarts — mobile-friendly.
+    // Any tap/click after the game is over drops back to the menu so the
+    // player can pick difficulty or retry the tutorial before the next match.
     this.input.on("pointerdown", () => {
-      if (this.state.winner) this.restart();
+      if (this.state.winner) this.backToMenu();
       if (this.tutorial.active) this.tutorial.registerTap();
     });
   }
@@ -503,7 +490,10 @@ export class GameScene extends Phaser.Scene {
     const sc = L.uiScale;
     const px = (n: number) => `${Math.max(10, Math.round(n * sc))}px`;
 
-    this.topText.setPosition(Math.round(24 * sc), Math.round(14 * sc));
+    this.topText.setPosition(
+      Math.max(16, Math.round(24 * sc)),
+      Math.max(14, Math.round(14 * sc)),
+    );
     this.topText.setFontSize(px(26));
 
     this.winText.setPosition(L.W / 2, L.H / 2);
@@ -514,12 +504,6 @@ export class GameScene extends Phaser.Scene {
 
     this.pausedText.setPosition(L.W / 2, L.H / 2 - Math.round(140 * sc));
     this.pausedText.setFontSize(px(64));
-
-    if (this.rpsLegend) {
-      this.rpsLegend.setPosition(L.rpsLegendX, L.rpsLegendY);
-      this.rpsLegend.setFontSize(px(14));
-      this.rpsLegend.setVisible(this.phase === "playing");
-    }
 
     this.bgZone.setPosition(L.W / 2, L.H / 2).setSize(L.W, L.H);
 
@@ -1004,7 +988,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const msg = this.state.winner === "left" ? "VICTORY" : "DEFEAT";
-    this.winText.setText(`${msg}\ntap to restart`);
+    this.winText.setText(`${msg}\ntap for menu`);
   }
 
   private updateCountdown(): void {
@@ -1517,17 +1501,6 @@ export class GameScene extends Phaser.Scene {
       .setSize(btnW, btnH);
   }
 
-  private createRpsLegend(): void {
-    this.rpsLegend = this.add
-      .text(0, 0, "Hyphae \u25B6 Fruiting \u25B6 Rhizo \u25B6 Hyphae", {
-        fontSize: "14px",
-        color: "#cdb98a",
-        fontFamily: "system-ui, sans-serif",
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(5);
-  }
-
   private togglePause(): void {
     if (this.state.winner) return;
     if (this.state.countdown > 0) return;
@@ -1709,6 +1682,11 @@ export class GameScene extends Phaser.Scene {
     // The explicit restart path always jumps straight back into play so the
     // player doesn't bounce through the menu mid-session.
     this.scene.restart({ skipMenu: true } satisfies GameSceneData);
+  }
+
+  private backToMenu(): void {
+    // Fresh scene on the menu — re-reads difficulty and clears tutorial state.
+    this.scene.restart({} satisfies GameSceneData);
   }
 
   private cycleDifficulty(): void {
