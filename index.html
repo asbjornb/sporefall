@@ -32,7 +32,7 @@
         right: 8px;
         width: 36px;
         height: 36px;
-        display: flex;
+        display: none;
         align-items: center;
         justify-content: center;
         background: rgba(27, 18, 10, 0.55);
@@ -44,6 +44,9 @@
         cursor: pointer;
         padding: 0;
         z-index: 20;
+      }
+      #fullscreen-btn.visible {
+        display: flex;
       }
       #fullscreen-btn:hover {
         background: rgba(27, 18, 10, 0.8);
@@ -85,7 +88,7 @@
   <body>
     <div id="game"></div>
     <button id="fullscreen-btn" type="button" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
-    <div id="mobile-hint">Tap ⛶ for fullscreen — plays best in landscape.</div>
+    <div id="mobile-hint">Plays best fullscreen in landscape.</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

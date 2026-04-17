@@ -403,6 +403,7 @@ export class GameScene extends Phaser.Scene {
     this.state = createGameState();
     this.ai = new SimpleAI("right", this.difficulty);
     this.layout = computeLayout(this.scale.width, this.scale.height);
+    emitPhase(this.phase);
 
     if (this.tutorial.active) {
       // Tutorial mode: skip countdown, grant ample nutrients, keep enemy passive.
@@ -1408,6 +1409,9 @@ export class GameScene extends Phaser.Scene {
     this.state.time = 0;
     // Re-position anything that depends on per-phase visibility.
     this.applyLayout();
+    // Fires synchronously inside the Spread pointer handler so main.ts can
+    // kick off fullscreen+landscape as part of the same user gesture.
+    emitPhase(this.phase);
   }
 
   // ---------- UI: tutorial summary overlay (toggled via the "?" button) ----------
@@ -1744,6 +1748,12 @@ export class GameScene extends Phaser.Scene {
     }
     this.restart();
   }
+}
+
+function emitPhase(phase: Phase): void {
+  window.dispatchEvent(
+    new CustomEvent<Phase>("sporefall:phase", { detail: phase }),
+  );
 }
 
 const DIFFICULTY_STORAGE_KEY = "sporefall.difficulty";
