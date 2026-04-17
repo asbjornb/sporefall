@@ -80,30 +80,12 @@
       :-webkit-full-screen #mobile-hint {
         display: none;
       }
-      #rotate {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: #1b120a;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        font-size: 1.1rem;
-        padding: 2rem;
-        z-index: 10;
-      }
-      @media (orientation: portrait) and (max-width: 900px) {
-        #rotate {
-          display: flex;
-        }
-      }
     </style>
   </head>
   <body>
     <div id="game"></div>
     <button id="fullscreen-btn" type="button" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
     <div id="mobile-hint">Tap ⛶ for fullscreen — plays best in landscape.</div>
-    <div id="rotate">Please rotate your device to landscape.</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

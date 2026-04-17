@@ -5,6 +5,7 @@ import {
   DISABLE_THRESHOLD,
   HYPHAE_SMOTHER_RATE,
   SLOT_COUNT,
+  START_COUNTDOWN,
   STRUCTURES,
   SURGE_THRESHOLD,
   levelMultiplier,
@@ -23,6 +24,8 @@ import type { GameState, Side, Structure, StructureKind } from "../game/types";
 
 export interface GameSceneData {
   tutorial?: boolean;
+  /** When true, skip the pre-game menu (used by Restart). */
+  skipMenu?: boolean;
 }
 
 const LEFT_TINT = 0x9bb04a;
@@ -94,6 +97,11 @@ interface Layout {
   rpsLegendX: number;
   /** Y position for the RPS legend (between top controls and HP bars). */
   rpsLegendY: number;
+  /** Center position for the pre-game title. */
+  titleX: number;
+  titleY: number;
+  /** Pre-game "Spread" start button rect. */
+  spreadBtn: BuildBtnRect;
 }
 
 function desaturate(hex: number, amount: number): number {
@@ -219,6 +227,19 @@ function computeLayout(W: number, H: number): Layout {
   const rpsLegendX = (logLeft + logRight) / 2;
   const rpsLegendY = logTop - (hpBarOffsetAboveLog + hpBarH + legendRowH);
 
+  // Pre-game menu: title sits a touch above the log's vertical center, spread
+  // button directly under it. Sized generously so the tap target is obvious.
+  const titleX = W / 2;
+  const titleY = Math.round(H * 0.38);
+  const spreadW = Math.max(s(200), Math.min(s(320), Math.round(W * 0.28)));
+  const spreadH = Math.max(s(64), Math.min(s(96), Math.round(H * 0.12)));
+  const spreadBtn: BuildBtnRect = {
+    x: Math.round(W / 2 - spreadW / 2),
+    y: Math.round(H * 0.52),
+    w: spreadW,
+    h: spreadH,
+  };
+
   return {
     W,
     H,
@@ -247,13 +268,25 @@ function computeLayout(W: number, H: number): Layout {
     hpBarOffsetAboveLog,
     rpsLegendX,
     rpsLegendY,
+    titleX,
+    titleY,
+    spreadBtn,
   };
 }
+
+type Phase = "menu" | "playing";
 
 export class GameScene extends Phaser.Scene {
   private state!: GameState;
   private ai!: SimpleAI;
   private paused = false;
+  private phase: Phase = "menu";
+  private titleText!: Phaser.GameObjects.Text;
+  private spreadBtn!: {
+    bg: Phaser.GameObjects.Graphics;
+    label: Phaser.GameObjects.Text;
+  };
+  private spreadBtnZone!: Phaser.GameObjects.Zone;
   private bg!: Phaser.GameObjects.Graphics;
   private fx!: Phaser.GameObjects.Graphics;
   private topText!: Phaser.GameObjects.Text;
@@ -317,6 +350,11 @@ export class GameScene extends Phaser.Scene {
     this.slotShake = new Array(SLOT_COUNT).fill(0);
     this.selectedSlotIdx = null;
     this.paused = false;
+    // Tutorials skip the menu and go straight to play; a fresh match (or
+    // restart via the in-game button) also jumps back into play. Only the
+    // very first load — triggered from BootScene — lands on the menu.
+    this.phase =
+      data?.tutorial || data?.skipMenu ? "playing" : "menu";
   }
 
   create(): void {
@@ -395,6 +433,7 @@ export class GameScene extends Phaser.Scene {
     this.createUpgradeButton();
     this.createControlButtons();
     this.createRpsLegend();
+    this.createMenuOverlay();
     this.applyLayout();
 
     this.scale.on("resize", this.onResize, this);
@@ -437,6 +476,7 @@ export class GameScene extends Phaser.Scene {
     if (this.rpsLegend) {
       this.rpsLegend.setPosition(L.rpsLegendX, L.rpsLegendY);
       this.rpsLegend.setFontSize(px(14));
+      this.rpsLegend.setVisible(this.phase === "playing");
     }
 
     this.bgZone.setPosition(L.W / 2, L.H / 2).setSize(L.W, L.H);
@@ -499,17 +539,34 @@ export class GameScene extends Phaser.Scene {
       .setSize(db.w, db.h);
 
     this.upgradeBtnLabel.setFontSize(px(18));
+
+    if (this.titleText) {
+      this.titleText.setPosition(L.titleX, L.titleY);
+      this.titleText.setFontSize(px(96));
+    }
+    if (this.spreadBtn) {
+      const sb = L.spreadBtn;
+      this.spreadBtn.label.setPosition(sb.x + sb.w / 2, sb.y + sb.h / 2);
+      this.spreadBtn.label.setFontSize(px(40));
+      this.spreadBtnZone
+        .setPosition(sb.x + sb.w / 2, sb.y + sb.h / 2)
+        .setSize(sb.w, sb.h);
+    }
   }
 
   update(_time: number, deltaMs: number): void {
     const dt = Math.min(0.1, deltaMs / 1000);
-    if (!this.state.winner && !this.paused) {
+    if (this.phase === "playing" && !this.state.winner && !this.paused) {
       step(this.state, dt);
       if (this.tutorial.active) {
         this.tutorial.update(this.state, dt);
       } else {
         this.ai.update(this.state, dt);
       }
+    } else if (this.phase === "menu") {
+      // Keep a ticking clock so the menu's subtle pulse has something to ride on,
+      // but never advance the match clock (countdown, front, pressure stay still).
+      this.state.time += dt;
     }
     for (let i = 0; i < this.slotShake.length; i++) {
       if (this.slotShake[i] > 0) {
@@ -539,6 +596,7 @@ export class GameScene extends Phaser.Scene {
     this.updatePausedOverlay();
     this.updateControlButtons();
     this.updateTutorialHint();
+    this.updateMenuOverlay();
   }
 
   private drawSlotDivider(): void {
@@ -671,14 +729,21 @@ export class GameScene extends Phaser.Scene {
     const colony = this.state[side];
     const color = side === "left" ? LEFT_TINT : RIGHT_TINT;
     const r = this.layout.heartRadius;
+    // In the pre-game menu, the sclerotia breathe — a slow glow oscillation
+    // makes the world feel alive without doing anything gameplay-affecting.
+    const breath =
+      this.phase === "menu" ? 1 + 0.06 * Math.sin(this.state.time * 1.6) : 1;
     // outer glow
     this.bg.fillStyle(color, 0.25);
-    this.bg.fillCircle(x, y, r * 1.7);
+    this.bg.fillCircle(x, y, r * 1.7 * breath);
     // core
     this.bg.fillStyle(color, 1);
     this.bg.fillCircle(x, y, r);
     this.bg.fillStyle(0xf5e8c8, 0.8);
     this.bg.fillCircle(x, y, r * 0.38);
+
+    // HP bar is part of the in-game HUD — hide it in the pre-game menu.
+    if (this.phase !== "playing") return;
 
     // HP bar above the log so it never sits on bark, positioned in the gap
     // reserved by computeLayout so it can't collide with the HUD text.
@@ -866,6 +931,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateHud(): void {
+    if (this.phase === "menu") {
+      this.topText.setText("");
+      return;
+    }
     const l = this.state.left;
     const r = this.state.right;
     const pL = pressureOf(this.state, "left").toFixed(1);
@@ -888,7 +957,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateCountdown(): void {
-    if (this.state.winner) {
+    if (this.phase !== "playing" || this.state.winner) {
       this.countdownText.setText("");
       return;
     }
@@ -937,7 +1006,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateBuildButtons(): void {
-    for (const { kind, container, title, detail, bg } of this.buildBtns) {
+    const show = this.phase === "playing";
+    for (let i = 0; i < this.buildBtns.length; i++) {
+      const { kind, container, title, detail, bg } = this.buildBtns[i];
+      bg.clear();
+      const zone = this.buildBtnZones[i];
+      if (!show) {
+        title.setText("");
+        detail.setText("");
+        if (zone.input?.enabled) zone.disableInteractive();
+        continue;
+      }
+      if (!zone.input?.enabled) zone.setInteractive({ useHandCursor: true });
       const x = container.getData("x") as number;
       const y = container.getData("y") as number;
       const w = container.getData("w") as number;
@@ -945,7 +1025,6 @@ export class GameScene extends Phaser.Scene {
       const cfg = STRUCTURES[kind];
       const can = canBuild(this.state, "left", kind);
 
-      bg.clear();
       bg.fillStyle(can ? 0x3a2a18 : 0x241a10, 1);
       bg.fillRoundedRect(x, y, w, h, 10);
       bg.lineStyle(3, can ? cfg.color : 0x4a3420, 1);
@@ -1057,11 +1136,33 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateControlButtons(): void {
-    this.drawControlButton(this.pauseBtn, this.paused ? 0x3a5a28 : 0x3a2a18);
-    this.pauseBtn.icon.setText(this.paused ? "\u25B6" : "\u23F8");
-    this.drawControlButton(this.restartBtn, 0x3a2a18);
+    const inMenu = this.phase === "menu";
+    // Pause & Restart belong to the active match — keep them out of the menu.
+    this.setBtnVisible(this.pauseBtn, this.pauseBtnZone, !inMenu);
+    this.setBtnVisible(this.restartBtn, this.restartBtnZone, !inMenu);
+    if (!inMenu) {
+      this.drawControlButton(this.pauseBtn, this.paused ? 0x3a5a28 : 0x3a2a18);
+      this.pauseBtn.icon.setText(this.paused ? "\u25B6" : "\u23F8");
+      this.drawControlButton(this.restartBtn, 0x3a2a18);
+    }
+    // Tutorial "?" and difficulty toggle stay visible in both phases.
     this.drawControlButton(this.tutorialBtn, this.tutorial.active ? 0x3a5a28 : 0x3a2a18);
     this.drawDifficultyButton();
+  }
+
+  private setBtnVisible(
+    btn: { bg: Phaser.GameObjects.Graphics; icon: Phaser.GameObjects.Text },
+    zone: Phaser.GameObjects.Zone,
+    visible: boolean,
+  ): void {
+    btn.bg.setVisible(visible);
+    btn.icon.setVisible(visible);
+    if (visible) {
+      if (!zone.input?.enabled) zone.setInteractive({ useHandCursor: true });
+    } else {
+      btn.bg.clear();
+      if (zone.input?.enabled) zone.disableInteractive();
+    }
   }
 
   private drawDifficultyButton(): void {
@@ -1115,6 +1216,79 @@ export class GameScene extends Phaser.Scene {
     btn.bg.fillRoundedRect(x, y, size, size, 10);
     btn.bg.lineStyle(2, 0xf5e8c8, 0.8);
     btn.bg.strokeRoundedRect(x, y, size, size, 10);
+  }
+
+  // ---------- UI: pre-game menu ----------
+
+  private createMenuOverlay(): void {
+    this.titleText = this.add
+      .text(0, 0, "Sporefall", {
+        fontSize: "96px",
+        color: "#f8e8c0",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+        align: "center",
+        stroke: "#1b120a",
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5)
+      .setDepth(25);
+
+    const bg = this.add.graphics().setDepth(25);
+    const label = this.add
+      .text(0, 0, "Spread", {
+        fontSize: "40px",
+        color: "#f8ecc8",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setDepth(26);
+    const zone = this.add
+      .zone(0, 0, 10, 10)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(26);
+    zone.on(
+      "pointerdown",
+      (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
+        e.stopPropagation?.();
+        this.startPlay();
+      },
+    );
+    this.spreadBtn = { bg, label };
+    this.spreadBtnZone = zone;
+  }
+
+  private updateMenuOverlay(): void {
+    const show = this.phase === "menu";
+    this.titleText.setVisible(show);
+    this.spreadBtn.label.setVisible(show);
+    if (!show) {
+      this.spreadBtn.bg.clear();
+      if (this.spreadBtnZone.input?.enabled) this.spreadBtnZone.disableInteractive();
+      return;
+    }
+    if (!this.spreadBtnZone.input?.enabled) {
+      this.spreadBtnZone.setInteractive({ useHandCursor: true });
+    }
+    const rect = this.layout.spreadBtn;
+    const pulse = 0.7 + 0.3 * Math.sin(this.state.time * 2);
+    this.spreadBtn.bg.clear();
+    this.spreadBtn.bg.fillStyle(0x3a2a18, 0.95);
+    this.spreadBtn.bg.fillRoundedRect(rect.x, rect.y, rect.w, rect.h, 14);
+    this.spreadBtn.bg.lineStyle(3, LEFT_TINT, pulse);
+    this.spreadBtn.bg.strokeRoundedRect(rect.x, rect.y, rect.w, rect.h, 14);
+  }
+
+  private startPlay(): void {
+    if (this.phase === "playing") return;
+    this.phase = "playing";
+    // Countdown starts fresh from the config default now that the player has tapped.
+    this.state.countdown = START_COUNTDOWN;
+    this.state.time = 0;
+    // Re-position anything that depends on per-phase visibility.
+    this.applyLayout();
   }
 
   private createRpsLegend(): void {
@@ -1306,12 +1480,19 @@ export class GameScene extends Phaser.Scene {
   private restart(): void {
     // Restart via the scene lifecycle so tutorial mode is fully exited
     // (init data defaults to a normal match); difficulty is re-read from storage.
-    this.scene.restart({} satisfies GameSceneData);
+    // The explicit restart path always jumps straight back into play so the
+    // player doesn't bounce through the menu mid-session.
+    this.scene.restart({ skipMenu: true } satisfies GameSceneData);
   }
 
   private cycleDifficulty(): void {
     this.difficulty = this.difficulty === "easy" ? "hard" : "easy";
     saveDifficulty(this.difficulty);
+    // On the menu, just re-label the toggle — no match to restart yet.
+    if (this.phase === "menu") {
+      this.ai = new SimpleAI("right", this.difficulty);
+      return;
+    }
     this.restart();
   }
 }
