@@ -27,16 +27,16 @@ function pickGoal(rng: () => number): Goal {
   return { kind: "build", structure: "hyphae" };
 }
 
-/** Hyphae beat fruiting, fruiting beats rhizo, rhizo beats hyphae. */
+/** Fruiting beats hyphae, hyphae beats rhizo, rhizo beats fruiting. */
 function chooseCounter(
   enemyHyphae: number,
   enemyFruiting: number,
   enemyRhizo: number,
 ): StructureKind {
   const max = Math.max(enemyHyphae, enemyFruiting, enemyRhizo);
-  if (max === 0) return "rhizomorph";
-  if (enemyFruiting === max) return "hyphae";
-  if (enemyRhizo === max) return "fruiting";
+  if (max === 0) return "hyphae";
+  if (enemyHyphae === max) return "fruiting";
+  if (enemyRhizo === max) return "hyphae";
   return "rhizomorph";
 }
 
@@ -194,10 +194,19 @@ export class SimpleAI {
     decomposerCount: number,
     combatCount: number,
   ): StructureKind {
-    // Never open with the decomposer: it costs 40 and takes 16s with 0
-    // pressure, so the enemy walks the front in uncontested. Instead, build
-    // a first decomposer only once we already have a couple of combat
-    // structures to upgrade while it establishes.
+    // Forced opener: the first 2 builds are always hyphae — cheap early pressure
+    // is the correct opener regardless of what the enemy is doing.
+    const colony = state[this.side];
+    let ownHyphae = 0;
+    for (const s of colony.slots) {
+      if (s && s.kind === "hyphae") ownHyphae++;
+    }
+    if (ownHyphae < 2 && state.time < 30) {
+      return "hyphae";
+    }
+    // Decomposer only after the hyphae opener is down and we have ≥2 combat
+    // structures — never at 0 combat, so the enemy can't walk the front in
+    // uncontested while the decomposer establishes.
     if (
       !underAttack &&
       decomposerCount === 0 &&
@@ -207,7 +216,7 @@ export class SimpleAI {
       return "decomposer";
     }
     // Midgame: a second decomposer only when genuinely safe.
-    if (safe && decomposerCount === 1 && state.time > 25 && state.time < 70) {
+    if (safe && decomposerCount === 1 && state.time > 35 && state.time < 80) {
       return "decomposer";
     }
     // Otherwise, counter the enemy's current composition.
