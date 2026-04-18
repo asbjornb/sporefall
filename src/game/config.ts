@@ -59,8 +59,8 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     color: 0x8a4fa8,
   },
   decomposer: {
-    cost: 30,
-    buildTime: 8,
+    cost: 40,
+    buildTime: 16,
     mutateTime: 8,
     mutateCost: 35,
     basePressure: 0,
