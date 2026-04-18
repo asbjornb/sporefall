@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f package.json ] && [ ! -d node_modules ] && npm install --no-audit --no-fund >&2 || true",
+            "timeout": 300,
+            "statusMessage": "Installing npm dependencies..."
+          }
+        ]
+      }
+    ]
+  }
+}
