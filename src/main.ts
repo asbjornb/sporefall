@@ -134,7 +134,11 @@ applyFsBtnVisibility();
 const spreadBtn = document.getElementById("spread-btn") as HTMLButtonElement | null;
 if (spreadBtn) {
   spreadBtn.addEventListener("click", () => {
-    void enterFullscreen();
+    // Fullscreen + orientation lock only matters on touch devices; desktop
+    // players shouldn't have their window forced fullscreen.
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      void enterFullscreen();
+    }
     window.dispatchEvent(new CustomEvent("sporefall:start"));
   });
 }
