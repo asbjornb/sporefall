@@ -116,12 +116,14 @@ export class SimpleAI {
 
     // Our inventory
     let decomposerCount = 0;
+    let combatCount = 0;
     let hasEmptySlot = false;
     let hasGrowing = false;
     for (const s of colony.slots) {
       if (s === null) hasEmptySlot = true;
       else {
         if (s.kind === "decomposer") decomposerCount++;
+        else combatCount++;
         if (s.status === "growing") hasGrowing = true;
       }
     }
@@ -147,6 +149,7 @@ export class SimpleAI {
         underAttack,
         safe,
         decomposerCount,
+        combatCount,
       );
 
       if (colony.nutrients >= STRUCTURES[primary].cost) {
@@ -189,12 +192,17 @@ export class SimpleAI {
     underAttack: boolean,
     safe: boolean,
     decomposerCount: number,
+    combatCount: number,
   ): StructureKind {
-    // Early opener: one decomposer for economy before things heat up.
+    // Never open with the decomposer: it costs 40 and takes 16s with 0
+    // pressure, so the enemy walks the front in uncontested. Instead, build
+    // a first decomposer only once we already have a couple of combat
+    // structures to upgrade while it establishes.
     if (
       !underAttack &&
       decomposerCount === 0 &&
-      state.time < 10
+      combatCount >= 2 &&
+      state.time < 40
     ) {
       return "decomposer";
     }
