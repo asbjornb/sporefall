@@ -112,3 +112,10 @@ export const SURGE_BURST_VISUAL_DURATION = 1.0;
  * Applies regardless of the meter's source — any pressure on the fruiting delays its burst.
  */
 export const SURGE_SLOW_MAX = 0.85;
+
+/**
+ * Pressure multiplier on a fruiting while its burst window is open.
+ * The burst is both a disable AoE and a brief pressure spike — simulates
+ * spore cloud shoving the front while it disables nearby enemies.
+ */
+export const SURGE_BURST_PRESSURE_MULT = 5;

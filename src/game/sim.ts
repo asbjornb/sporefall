@@ -11,6 +11,7 @@ import {
   START_HP,
   START_NUTRIENTS,
   SURGE_BURST_DAMAGE,
+  SURGE_BURST_PRESSURE_MULT,
   SURGE_BURST_VISUAL_DURATION,
   SURGE_CHARGE_RATE,
   SURGE_SLOW_MAX,
@@ -57,7 +58,11 @@ function isOperational(s: Structure): boolean {
 function structurePressure(s: Structure): number {
   if (!isOperational(s)) return 0;
   const cfg = STRUCTURES[s.kind];
-  return cfg.basePressure * levelMultiplier(s.level);
+  const base = cfg.basePressure * levelMultiplier(s.level);
+  if (s.kind === "fruiting" && (s.surgeTimer ?? 0) > 0) {
+    return base * SURGE_BURST_PRESSURE_MULT;
+  }
+  return base;
 }
 
 function colonyPressure(colony: ColonyState): number {

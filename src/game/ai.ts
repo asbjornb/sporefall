@@ -27,16 +27,16 @@ function pickGoal(rng: () => number): Goal {
   return { kind: "build", structure: "hyphae" };
 }
 
-/** Hyphae beat fruiting, fruiting beats rhizo, rhizo beats hyphae. */
+/** Fruiting beats hyphae, hyphae beats rhizo, rhizo beats fruiting. */
 function chooseCounter(
   enemyHyphae: number,
   enemyFruiting: number,
   enemyRhizo: number,
 ): StructureKind {
   const max = Math.max(enemyHyphae, enemyFruiting, enemyRhizo);
-  if (max === 0) return "rhizomorph";
-  if (enemyFruiting === max) return "hyphae";
-  if (enemyRhizo === max) return "fruiting";
+  if (max === 0) return "hyphae";
+  if (enemyHyphae === max) return "fruiting";
+  if (enemyRhizo === max) return "hyphae";
   return "rhizomorph";
 }
 
@@ -190,16 +190,22 @@ export class SimpleAI {
     safe: boolean,
     decomposerCount: number,
   ): StructureKind {
-    // Early opener: one decomposer for economy before things heat up.
-    if (
-      !underAttack &&
-      decomposerCount === 0 &&
-      state.time < 10
-    ) {
+    // Forced opener: the first ~2 own hyphae — cheap early pressure is always
+    // the right opener, regardless of what the enemy is doing.
+    const colony = state[this.side];
+    let ownHyphae = 0;
+    for (const s of colony.slots) {
+      if (s && s.kind === "hyphae") ownHyphae++;
+    }
+    if (ownHyphae < 2 && state.time < 30) {
+      return "hyphae";
+    }
+    // Early economy: one decomposer once the hyphae opener is down.
+    if (!underAttack && decomposerCount === 0 && state.time < 25) {
       return "decomposer";
     }
     // Midgame: a second decomposer only when genuinely safe.
-    if (safe && decomposerCount === 1 && state.time > 25 && state.time < 70) {
+    if (safe && decomposerCount === 1 && state.time > 35 && state.time < 80) {
       return "decomposer";
     }
     // Otherwise, counter the enemy's current composition.
