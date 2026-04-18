@@ -65,7 +65,7 @@ const STEPS: TutorialStep[] = [
   {
     id: "counters-intro",
     hint:
-      "COUNTERS  Hyphae smother Fruiting.\nThe enemy just grew a Fruiting body — watch the\ngreen haze as your Hyphae shut it down." +
+      "FRUITING  The enemy just grew a Fruiting Cluster.\nIt charges a big AoE surge that disables your active\nstructures for a few seconds. Cheap Hyphae are the\nbudget answer — pile on pressure while it's charging." +
       TAP_HINT,
     setup: (state) => {
       build(state, "right", "fruiting");
@@ -77,14 +77,16 @@ const STEPS: TutorialStep[] = [
   {
     id: "rhizo-build",
     hint:
-      "RHIZOMORPH  Rhizo dissolves Hyphae.\nThe enemy swapped to Hyphae — build a Rhizomorph\n(40 nutrients) to see the dissolve line in action.",
+      "RHIZOMORPH  Rhizo locks onto the enemy's most\nvaluable combat structure and dissolves it —\nstrongest against Fruiting and other Rhizos.\nBuild a Rhizomorph (40 nutrients).",
     setup: (state) => {
-      // Clear enemy slots so the previous Fruiting doesn't surge mid-lesson.
+      // Clear enemy slots so the previous Fruiting doesn't surge mid-lesson,
+      // then spawn a fresh Fruiting for Rhizo to target: highest-value enemy
+      // means the dissolve arc points at a Fruiting, matching the lesson.
       for (let i = 0; i < state.right.slots.length; i++) {
         state.right.slots[i] = null;
       }
-      build(state, "right", "hyphae");
-      const spawned = state.right.slots.find((s) => s?.kind === "hyphae");
+      build(state, "right", "fruiting");
+      const spawned = state.right.slots.find((s) => s?.kind === "fruiting");
       if (spawned) spawned.timer = 0.5;
     },
     isComplete: hasPlayerRhizomorph,
@@ -92,7 +94,7 @@ const STEPS: TutorialStep[] = [
   {
     id: "rps-closeout",
     hint:
-      "CLOSES THE LOOP  Fruiting bursts Rhizomorph.\nHyphae \u25B6 Fruiting \u25B6 Rhizo \u25B6 Hyphae.\nCounter whatever the enemy leans on." +
+      "COUNTERS\n\u2022 Hyphae: cheap raw pressure\n\u2022 Rhizo: single-target dissolve on high-value enemies\n\u2022 Fruiting: AoE disable burst + pressure spike\nCounter whatever the enemy leans on." +
       TAP_HINT,
     isComplete: (_s, c) => c.timeInStep > MIN_READ_TIME && c.tapped,
   },

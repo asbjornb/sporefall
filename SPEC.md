@@ -48,6 +48,8 @@ The front shifts toward whichever side currently has more pressure. When a colon
 
 Think of it as two tides of color pushing against each other, the boundary flowing back and forth as each side builds, loses, or upgrades structures. Waves of accelerated growth periodically pulse outward from each structure — these are the "attacks," visible as brighter surges along the front.
 
+On top of raw pressure, structures can also **disable** each other. Every active structure has a disable meter that fills under attack and decays when left alone. When the meter fills, the structure goes offline for a few seconds, producing no pressure, then recovers. Only Rhizomorphs and Fruiting Clusters fill enemy meters; Hyphae and Decomposers don't.
+
 **Future improvement (not MVP):** Territorial control could grant nutrient bonuses from decomposed wood, creating snowball dynamics.
 
 ### Economy
@@ -56,26 +58,29 @@ Nutrients accumulate passively over time. Starting nutrients are enough to build
 
 ### Structures
 
-- **Hyphal Mat** — cheap. Produces thin hyphal pressure: fast-spreading, smothering.
-- **Rhizomorph Node** — medium cost. Produces enzymatic pressure at range: dissolves enemy growth from a distance.
-- **Fruiting Cluster** — expensive. Produces sporulation surges: devastating bursts that colonize enemy territory faster than it can respond.
-- **Decomposer Node** — nutrient building. Breaks down wood into usable sugars, increasing income. Slow to establish and produces no pressure while growing, creating a vulnerability window.
+- **Hyphal Mat** — cheap. Contributes steady pressure. No active effect — just raw, cost-efficient push.
+- **Rhizomorph Node** — medium cost. Contributes moderate pressure and locks onto one enemy combat structure at a time, dissolving it by filling its disable meter. Targets the highest invested-nutrient enemy (decomposers excluded), so it naturally goes after expensive Fruiting and Rhizomorph structures over cheap Hyphae.
+- **Fruiting Cluster** — expensive. Contributes base pressure while charging a surge. When the surge fires, it splashes heavy disable damage onto every active enemy combat structure (decomposers excluded) and briefly spikes the Cluster's own pressure. Incoming disable damage to the Fruiting itself slows the charge proportionally — any pressure on it delays the burst.
+- **Decomposer Node** — nutrient building. Breaks down wood into usable sugars, increasing income. Slow to establish and produces no pressure while growing, creating a vulnerability window. Decomposers can be disabled too, but neither Rhizo nor Fruiting target them.
 
 ### Pressure types (the RPS)
 
-- **Hyphae > Fruiting Bodies** — swarming threads smother mushrooms before they mature.
-- **Rhizomorphs > Hyphae** — enzymatic cords dissolve thin hyphae at range.
-- **Fruiting Bodies > Rhizomorphs** — spore clouds colonize enzymatic zones faster than rhizomorphs can break them down.
+The three combat structures form a soft rock‑paper‑scissors through cost, pressure, and targeting — not a hard type table:
 
-Hyphae remain the cost-efficient counter to Fruiting Bodies.
+- **Hyphae counter Fruiting Clusters** by cost-efficiency. A cheap swarm of Hyphae out-pressures a slow-charging Fruiting, and because Hyphae fill no disable meter, the Fruiting surge never finds a juicy high-value target to splash against (besides other combat structures the player has built).
+- **Rhizomorphs counter Fruiting and each other** through value-weighted targeting. A Rhizomorph will dissolve the enemy's most expensive active combat structure first, so it's best aimed at Fruiting Clusters and upgraded Rhizomorphs — and comparatively weak against a field of cheap Hyphae.
+- **Fruiting Clusters counter dense fields** by AoE burst. The burst disables every active enemy combat structure at once, which is devastating against stacks of Rhizomorphs or mixed lineups, but expensive and slow to come online.
+
+In short: Hyphae are raw pressure on a budget, Rhizomorphs are precision disable against value, Fruiting is area disable plus a pressure spike.
 
 *Balance philosophy: clear direction, not perfect tuning.*
 
 ### Structure lifecycle
 
-- **Establishment:** costs nutrients, takes time, produces no pressure while growing.
-- **Upgrade (mutation):** costs nutrients, takes time. Multiple structures can mutate simultaneously. A mutating structure produces no pressure during the process. Upgraded structures produce stronger pressure. Single upgrade dimension in MVP.
-- **Production:** active structures continuously contribute pressure. Upgraded structures contribute more.
+- **Establishment:** costs nutrients, takes time, produces no pressure while growing. Only one structure per colony may be growing at a time — the build buttons gate on this.
+- **Upgrade (mutation):** costs nutrients, takes time. Multiple structures can mutate simultaneously. A mutating structure produces no pressure during the process. Upgraded structures produce stronger pressure and stronger per-type effects (Rhizo dissolve rate, Fruiting charge rate and burst damage, Decomposer income bonus). Single upgrade dimension, five escalating steps (level 2 → 6), with later upgrades costing more and granting a larger jump.
+- **Disabled:** when a structure's disable meter fills, it goes offline for a few seconds — no pressure, no effects — then recovers with the meter cleared. Upgrades cannot be started on a disabled structure.
+- **Production:** active structures continuously contribute pressure and apply their effects. Upgraded structures contribute more.
 
 ### Player actions
 
@@ -90,6 +95,20 @@ That's it.
 ### Orientation
 
 Force landscape. Portrait → "rotate device" prompt.
+
+### Pre-game menu
+
+Before the match starts the player sees a centered panel with:
+
+- **Spread** — starts the match (and, on mobile, kicks off fullscreen + landscape lock as part of the same user gesture).
+- **Difficulty toggle** — Easy / Hard.
+- **How to play** — opens a short bullet-point modal (build to push the front, only one construction at a time, upgrade pauses pressure, don't get overrun) with a **Start Tutorial** button that runs the scripted tutorial instead of a real match.
+
+A brief "get ready" countdown plays before the first tick.
+
+### Tutorial
+
+Scripted, step-by-step director that spawns specific enemy structures and waits for the player to perform each action (build Hyphae, watch it mature, upgrade it, build a Rhizomorph). Info-only steps require a short dwell before a tap advances them so stray taps can't skip unread text. Ends with a summary and a pointer at the restart button for a real match.
 
 ### Layout
 
@@ -113,10 +132,15 @@ Pressure waves pulse outward as soft color surges rather than discrete sprites. 
 
 ## AI opponent
 
-MVP bot behavior:
+The pre-game menu offers two difficulties:
 
-- After completing an action, randomly choose a next goal from: Hyphae / Rhizomorph / Fruiting / Decomposer / Upgrade. Save nutrients until affordable, then execute. Repeat.
-- Simple weighting: mostly growth structures, occasionally decomposer, occasionally upgrade.
+- **Easy (default).** After completing an action, randomly choose a next goal from: Hyphae / Rhizomorph / Fruiting / Decomposer / Upgrade. Save nutrients until affordable, then execute. Simple weighting: mostly growth structures, occasionally decomposer, occasionally upgrade.
+- **Hard.** Same action set, but the bot reads the game state each tick:
+  - Forced Hyphae opener for the first couple of builds, never opens with Decomposer.
+  - Only takes Decomposers when it already has combat cover and the front isn't pressing on it.
+  - Counters the enemy's current composition (Fruiting vs Hyphae, Hyphae vs Rhizo, Rhizo vs Fruiting). If the counter is already affordable but the bot was saving for something pricier, it buys the counter instead of sitting on nutrients.
+  - Under pressure (front advanced or HP low) it never saves for the ideal structure — it buys the strongest combat structure it can afford right now, and stops spending nutrients on upgrades.
+  - When no slot is free, upgrades the highest-impact structure it can (Fruiting > Rhizo > Hyphae; a single Decomposer upgrade is fine, no more).
 
 ## Technical goals
 
