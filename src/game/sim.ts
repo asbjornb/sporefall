@@ -7,6 +7,7 @@ import {
   FRUITING_RESIDUAL_PRESSURE_MULT,
   HYPHAE_SMOTHER_RATE,
   HYPHAE_SMOTHER_SURGE_SLOW,
+  MAX_LEVEL,
   RHIZO_DISSOLVE_RATE,
   RHIZO_DISSOLVE_VS_HYPHAE,
   SCLEROTIUM_DAMAGE,
@@ -20,7 +21,10 @@ import {
   SURGE_BURST_PRESSURE_MULT,
   SURGE_CHARGE_RATE,
   SURGE_THRESHOLD,
-  levelMultiplier,
+  levelEffectMult,
+  levelPressureMult,
+  nextUpgradeCost,
+  nextUpgradeTime,
 } from "./config";
 import type {
   ColonyState,
@@ -62,7 +66,7 @@ function isOperational(s: Structure): boolean {
 function structurePressure(s: Structure): number {
   if (!isOperational(s)) return 0;
   const cfg = STRUCTURES[s.kind];
-  const lvl = levelMultiplier(s.level);
+  const lvl = levelPressureMult(s.kind, s.level);
   if (s.kind === "fruiting") {
     const bursting = (s.surgeTimer ?? 0) > 0;
     const mult = bursting
@@ -85,7 +89,9 @@ function recomputeIncome(colony: ColonyState): void {
   let bonus = 0;
   for (const slot of colony.slots) {
     if (slot && slot.status === "active") {
-      bonus += STRUCTURES[slot.kind].incomeBonus * levelMultiplier(slot.level);
+      bonus +=
+        STRUCTURES[slot.kind].incomeBonus *
+        levelEffectMult(slot.kind, slot.level);
     }
   }
   colony.income = BASE_INCOME + bonus;
@@ -148,8 +154,10 @@ export function canMutate(
   if (!s) return false;
   if (s.status === "disabled") return false;
   if (s.status !== "active") return false;
-  const cfg = STRUCTURES[s.kind];
-  return colony.nutrients >= cfg.mutateCost;
+  if (s.level >= MAX_LEVEL) return false;
+  const cost = nextUpgradeCost(s.kind, s.level);
+  if (cost === null) return false;
+  return colony.nutrients >= cost;
 }
 
 export function mutate(
@@ -160,10 +168,11 @@ export function mutate(
   if (!canMutate(state, side, slotIdx)) return false;
   const colony = state[side];
   const s = colony.slots[slotIdx]!;
-  const cfg = STRUCTURES[s.kind];
-  colony.nutrients -= cfg.mutateCost;
+  const cost = nextUpgradeCost(s.kind, s.level)!;
+  const time = nextUpgradeTime(s.kind, s.level)!;
+  colony.nutrients -= cost;
   s.status = "mutating";
-  s.timer = cfg.mutateTime;
+  s.timer = time;
   recomputeIncome(colony);
   return true;
 }
@@ -288,7 +297,7 @@ function applyEffects(
   let smotherRate = 0;
   for (const s of ownColony.slots) {
     if (!s || s.status !== "active" || s.kind !== "hyphae") continue;
-    smotherRate += HYPHAE_SMOTHER_RATE * levelMultiplier(s.level);
+    smotherRate += HYPHAE_SMOTHER_RATE * levelEffectMult(s.kind, s.level);
   }
   if (smotherRate > 0) {
     for (const e of enemyColony.slots) {
@@ -311,7 +320,7 @@ function applyEffects(
       r.rhizoTargetId = target ? target.id : null;
     }
     if (!target) continue;
-    const baseRate = RHIZO_DISSOLVE_RATE * levelMultiplier(r.level);
+    const baseRate = RHIZO_DISSOLVE_RATE * levelEffectMult(r.kind, r.level);
     const rate =
       target.kind === "hyphae" ? baseRate * RHIZO_DISSOLVE_VS_HYPHAE : baseRate;
     const becameDisabled = damageDisable(target, rate * dt);
@@ -324,7 +333,8 @@ function applyEffects(
     if (f.status !== "active") continue;
     const smotherFill = f.disableMeter / DISABLE_THRESHOLD;
     const slow = HYPHAE_SMOTHER_SURGE_SLOW * smotherFill;
-    const rate = SURGE_CHARGE_RATE * levelMultiplier(f.level) * (1 - slow);
+    const rate =
+      SURGE_CHARGE_RATE * levelEffectMult(f.kind, f.level) * (1 - slow);
     f.surgeCharge = Math.min(
       SURGE_THRESHOLD,
       (f.surgeCharge ?? 0) + Math.max(0, rate) * dt,
@@ -333,7 +343,10 @@ function applyEffects(
       // Fire a burst.
       const target = findFruitingTarget(enemyColony);
       if (target) {
-        damageDisable(target, SURGE_BURST_DAMAGE * levelMultiplier(f.level));
+        damageDisable(
+          target,
+          SURGE_BURST_DAMAGE * levelEffectMult(f.kind, f.level),
+        );
       }
       f.surgeCharge = 0;
       f.surgeTimer = SURGE_BURST_DURATION;
