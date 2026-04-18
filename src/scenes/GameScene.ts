@@ -3,10 +3,13 @@ import { SimpleAI, type AIDifficulty } from "../game/ai";
 import {
   DISABLE_DURATION,
   DISABLE_THRESHOLD,
+  MAX_LEVEL,
   SLOT_COUNT,
   START_COUNTDOWN,
   STRUCTURES,
   SURGE_THRESHOLD,
+  nextUpgradeCost,
+  nextUpgradeTime,
 } from "../game/config";
 import {
   build,
@@ -1000,7 +1003,9 @@ export class GameScene extends Phaser.Scene {
       // Progress arc while growing/mutating.
       if (s.status === "growing" || s.status === "mutating") {
         const cfgTime =
-          s.status === "growing" ? cfg.buildTime : cfg.mutateTime;
+          s.status === "growing"
+            ? cfg.buildTime
+            : (nextUpgradeTime(s.kind, s.level) ?? cfg.buildTime);
         const prog = 1 - s.timer / cfgTime;
         const end = -Math.PI / 2 + prog * Math.PI * 2;
         this.fx.lineStyle(4, 0xf5e8c8, 0.95);
@@ -2048,13 +2053,19 @@ export class GameScene extends Phaser.Scene {
       textColor = "#8a7a60";
       borderColor = 0x4a3420;
       fillColor = 0x241a10;
+    } else if (s.level >= MAX_LEVEL) {
+      text = `Max Level\nLv${s.level}`;
+      textColor = "#8a7a60";
+      borderColor = 0x4a3420;
+      fillColor = 0x241a10;
     } else if (can) {
-      text = `Upgrade → Lv${s.level + 1}\n${cfg.mutateCost}n`;
+      const need = nextUpgradeCost(s.kind, s.level) ?? 0;
+      text = `Upgrade → Lv${s.level + 1}\n${need}n`;
       textColor = "#f5e8c8";
       borderColor = cfg.color;
       fillColor = 0x3a2a18;
     } else {
-      const need = cfg.mutateCost;
+      const need = nextUpgradeCost(s.kind, s.level) ?? 0;
       const have = Math.floor(this.state.left.nutrients);
       text = `Upgrade → Lv${s.level + 1}\n${have}/${need}n`;
       textColor = "#8a7a60";

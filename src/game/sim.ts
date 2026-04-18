@@ -3,6 +3,7 @@ import {
   DISABLE_DURATION,
   DISABLE_THRESHOLD,
   FRONT_SPEED,
+  MAX_LEVEL,
   RHIZO_DISSOLVE_RATE,
   SCLEROTIUM_DAMAGE,
   SLOT_COUNT,
@@ -16,7 +17,10 @@ import {
   SURGE_CHARGE_RATE,
   SURGE_SLOW_MAX,
   SURGE_THRESHOLD,
-  levelMultiplier,
+  levelEffectMult,
+  levelPressureMult,
+  nextUpgradeCost,
+  nextUpgradeTime,
 } from "./config";
 import type {
   ColonyState,
@@ -58,7 +62,7 @@ function isOperational(s: Structure): boolean {
 function structurePressure(s: Structure): number {
   if (!isOperational(s)) return 0;
   const cfg = STRUCTURES[s.kind];
-  const base = cfg.basePressure * levelMultiplier(s.level);
+  const base = cfg.basePressure * levelPressureMult(s.kind, s.level);
   if (s.kind === "fruiting" && (s.surgeTimer ?? 0) > 0) {
     return base * SURGE_BURST_PRESSURE_MULT;
   }
@@ -77,7 +81,9 @@ function recomputeIncome(colony: ColonyState): void {
   let bonus = 0;
   for (const slot of colony.slots) {
     if (slot && slot.status === "active") {
-      bonus += STRUCTURES[slot.kind].incomeBonus * levelMultiplier(slot.level);
+      bonus +=
+        STRUCTURES[slot.kind].incomeBonus *
+        levelEffectMult(slot.kind, slot.level);
     }
   }
   colony.income = BASE_INCOME + bonus;
@@ -140,8 +146,10 @@ export function canMutate(
   if (!s) return false;
   if (s.status === "disabled") return false;
   if (s.status !== "active") return false;
-  const cfg = STRUCTURES[s.kind];
-  return colony.nutrients >= cfg.mutateCost;
+  if (s.level >= MAX_LEVEL) return false;
+  const cost = nextUpgradeCost(s.kind, s.level);
+  if (cost === null) return false;
+  return colony.nutrients >= cost;
 }
 
 export function mutate(
@@ -152,10 +160,11 @@ export function mutate(
   if (!canMutate(state, side, slotIdx)) return false;
   const colony = state[side];
   const s = colony.slots[slotIdx]!;
-  const cfg = STRUCTURES[s.kind];
-  colony.nutrients -= cfg.mutateCost;
+  const cost = nextUpgradeCost(s.kind, s.level)!;
+  const time = nextUpgradeTime(s.kind, s.level)!;
+  colony.nutrients -= cost;
   s.status = "mutating";
-  s.timer = cfg.mutateTime;
+  s.timer = time;
   recomputeIncome(colony);
   return true;
 }
@@ -236,7 +245,11 @@ function damageDisable(target: Structure, amount: number): boolean {
  */
 function structureValue(s: Structure): number {
   const cfg = STRUCTURES[s.kind];
-  return cfg.cost + cfg.mutateCost * (s.level - 1);
+  let value = cfg.cost;
+  for (let i = 0; i < s.level - 1 && i < cfg.upgrades.length; i++) {
+    value += cfg.upgrades[i].cost;
+  }
+  return value;
 }
 
 function findRhizoTarget(enemyColony: ColonyState): Structure | null {
@@ -292,7 +305,7 @@ function applyEffects(
       r.rhizoTargetId = target ? target.id : null;
     }
     if (!target) continue;
-    const rate = RHIZO_DISSOLVE_RATE * levelMultiplier(r.level);
+    const rate = RHIZO_DISSOLVE_RATE * levelEffectMult(r.kind, r.level);
     const becameDisabled = damageDisable(target, rate * dt);
     if (becameDisabled) r.rhizoTargetId = null;
   }
@@ -305,13 +318,14 @@ function applyEffects(
     if (f.status !== "active") continue;
     const meterFill = f.disableMeter / DISABLE_THRESHOLD;
     const slow = SURGE_SLOW_MAX * meterFill;
-    const rate = SURGE_CHARGE_RATE * levelMultiplier(f.level) * (1 - slow);
+    const rate =
+      SURGE_CHARGE_RATE * levelEffectMult(f.kind, f.level) * (1 - slow);
     f.surgeCharge = Math.min(
       SURGE_THRESHOLD,
       (f.surgeCharge ?? 0) + Math.max(0, rate) * dt,
     );
     if ((f.surgeCharge ?? 0) >= SURGE_THRESHOLD) {
-      const damage = SURGE_BURST_DAMAGE * levelMultiplier(f.level);
+      const damage = SURGE_BURST_DAMAGE * levelEffectMult(f.kind, f.level);
       let firstTargetId: number | null = null;
       for (const e of enemyColony.slots) {
         if (!e) continue;

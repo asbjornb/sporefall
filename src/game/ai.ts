@@ -116,12 +116,14 @@ export class SimpleAI {
 
     // Our inventory
     let decomposerCount = 0;
+    let combatCount = 0;
     let hasEmptySlot = false;
     let hasGrowing = false;
     for (const s of colony.slots) {
       if (s === null) hasEmptySlot = true;
       else {
         if (s.kind === "decomposer") decomposerCount++;
+        else combatCount++;
         if (s.status === "growing") hasGrowing = true;
       }
     }
@@ -147,6 +149,7 @@ export class SimpleAI {
         underAttack,
         safe,
         decomposerCount,
+        combatCount,
       );
 
       if (colony.nutrients >= STRUCTURES[primary].cost) {
@@ -189,9 +192,10 @@ export class SimpleAI {
     underAttack: boolean,
     safe: boolean,
     decomposerCount: number,
+    combatCount: number,
   ): StructureKind {
-    // Forced opener: the first ~2 own hyphae — cheap early pressure is always
-    // the right opener, regardless of what the enemy is doing.
+    // Forced opener: the first 2 builds are always hyphae — cheap early pressure
+    // is the correct opener regardless of what the enemy is doing.
     const colony = state[this.side];
     let ownHyphae = 0;
     for (const s of colony.slots) {
@@ -200,8 +204,15 @@ export class SimpleAI {
     if (ownHyphae < 2 && state.time < 30) {
       return "hyphae";
     }
-    // Early economy: one decomposer once the hyphae opener is down.
-    if (!underAttack && decomposerCount === 0 && state.time < 25) {
+    // Decomposer only after the hyphae opener is down and we have ≥2 combat
+    // structures — never at 0 combat, so the enemy can't walk the front in
+    // uncontested while the decomposer establishes.
+    if (
+      !underAttack &&
+      decomposerCount === 0 &&
+      combatCount >= 2 &&
+      state.time < 40
+    ) {
       return "decomposer";
     }
     // Midgame: a second decomposer only when genuinely safe.
