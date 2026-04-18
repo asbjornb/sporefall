@@ -1,14 +1,9 @@
 import {
   BASE_INCOME,
   DISABLE_DURATION,
-  DISABLE_METER_DECAY,
   DISABLE_THRESHOLD,
   FRONT_SPEED,
-  FRUITING_RESIDUAL_PRESSURE_MULT,
-  HYPHAE_SMOTHER_RATE,
-  HYPHAE_SMOTHER_SURGE_SLOW,
   RHIZO_DISSOLVE_RATE,
-  RHIZO_DISSOLVE_VS_HYPHAE,
   SCLEROTIUM_DAMAGE,
   SLOT_COUNT,
   START_COUNTDOWN,
@@ -16,9 +11,9 @@ import {
   START_HP,
   START_NUTRIENTS,
   SURGE_BURST_DAMAGE,
-  SURGE_BURST_DURATION,
-  SURGE_BURST_PRESSURE_MULT,
+  SURGE_BURST_VISUAL_DURATION,
   SURGE_CHARGE_RATE,
+  SURGE_SLOW_MAX,
   SURGE_THRESHOLD,
   levelMultiplier,
 } from "./config";
@@ -62,15 +57,7 @@ function isOperational(s: Structure): boolean {
 function structurePressure(s: Structure): number {
   if (!isOperational(s)) return 0;
   const cfg = STRUCTURES[s.kind];
-  const lvl = levelMultiplier(s.level);
-  if (s.kind === "fruiting") {
-    const bursting = (s.surgeTimer ?? 0) > 0;
-    const mult = bursting
-      ? SURGE_BURST_PRESSURE_MULT
-      : FRUITING_RESIDUAL_PRESSURE_MULT;
-    return cfg.basePressure * lvl * mult;
-  }
-  return cfg.basePressure * lvl;
+  return cfg.basePressure * levelMultiplier(s.level);
 }
 
 function colonyPressure(colony: ColonyState): number {
@@ -209,7 +196,8 @@ function decayDisableMeter(colony: ColonyState, dt: number): void {
     if (!s) continue;
     if (s.status === "disabled") continue;
     if (s.disableMeter <= 0) continue;
-    s.disableMeter = Math.max(0, s.disableMeter - DISABLE_METER_DECAY * dt);
+    const decay = STRUCTURES[s.kind].disableDecay;
+    s.disableMeter = Math.max(0, s.disableMeter - decay * dt);
   }
 }
 
@@ -236,37 +224,36 @@ function damageDisable(target: Structure, amount: number): boolean {
   return false;
 }
 
-function findRhizoTarget(
-  enemyColony: ColonyState,
-): { target: Structure; slotIdx: number } | null {
-  // Priority: hyphae → rhizomorph → fruiting. Decomposers are not targeted.
-  // Tie-break by slot index for deterministic behavior.
-  const order: StructureKind[] = ["hyphae", "rhizomorph", "fruiting"];
-  for (const kind of order) {
-    for (let i = 0; i < enemyColony.slots.length; i++) {
-      const s = enemyColony.slots[i];
-      if (!s) continue;
-      if (s.kind !== kind) continue;
-      if (s.status !== "active") continue;
-      return { target: s, slotIdx: i };
-    }
-  }
-  return null;
+/**
+ * Rough invested-nutrient value of a structure: base cost plus each mutation.
+ * Used to prioritize high-value enemy targets so Rhizo's single-target disable
+ * is naturally more efficient against expensive structures than cheap swarms.
+ */
+function structureValue(s: Structure): number {
+  const cfg = STRUCTURES[s.kind];
+  return cfg.cost + cfg.mutateCost * (s.level - 1);
 }
 
-function findFruitingTarget(enemyColony: ColonyState): Structure | null {
-  // Priority: rhizomorph → hyphae → fruiting. Decomposers are not targeted.
-  const order: StructureKind[] = ["rhizomorph", "hyphae", "fruiting"];
-  for (const kind of order) {
-    for (let i = 0; i < enemyColony.slots.length; i++) {
-      const s = enemyColony.slots[i];
-      if (!s) continue;
-      if (s.kind !== kind) continue;
-      if (s.status !== "active") continue;
-      return s;
+function findRhizoTarget(enemyColony: ColonyState): Structure | null {
+  // Most-expensive active enemy (excluding decomposer — economy, not combat).
+  // Tiebreak: higher level, then lower slot index.
+  let best: { s: Structure; value: number; idx: number } | null = null;
+  for (let i = 0; i < enemyColony.slots.length; i++) {
+    const s = enemyColony.slots[i];
+    if (!s) continue;
+    if (s.kind === "decomposer") continue;
+    if (s.status !== "active") continue;
+    const value = structureValue(s);
+    if (
+      !best ||
+      value > best.value ||
+      (value === best.value && s.level > best.s.level) ||
+      (value === best.value && s.level === best.s.level && i < best.idx)
+    ) {
+      best = { s, value, idx: i };
     }
   }
-  return null;
+  return best ? best.s : null;
 }
 
 function findStructureById(
@@ -284,20 +271,10 @@ function applyEffects(
   enemyColony: ColonyState,
   dt: number,
 ): void {
-  // Hyphae smother aura: every active hyphae adds smother to every active enemy fruiting.
-  let smotherRate = 0;
-  for (const s of ownColony.slots) {
-    if (!s || s.status !== "active" || s.kind !== "hyphae") continue;
-    smotherRate += HYPHAE_SMOTHER_RATE * levelMultiplier(s.level);
-  }
-  if (smotherRate > 0) {
-    for (const e of enemyColony.slots) {
-      if (!e || e.status !== "active" || e.kind !== "fruiting") continue;
-      damageDisable(e, smotherRate * dt);
-    }
-  }
-
-  // Rhizomorph dissolve: each active rhizo holds a sticky target and ticks dissolve into it.
+  // Rhizomorph dissolve: each active rhizo locks a single high-value enemy target
+  // and ticks a flat dissolve rate into it. Re-evaluates target when the current
+  // one is disabled or gone. No type-specific multipliers — the value-weighted
+  // targeting alone makes disabling expensive structures more impactful.
   for (const r of ownColony.slots) {
     if (!r || r.status !== "active" || r.kind !== "rhizomorph") continue;
     let target: Structure | null = null;
@@ -306,38 +283,41 @@ function applyEffects(
       if (candidate && candidate.status === "active") target = candidate;
     }
     if (!target) {
-      const picked = findRhizoTarget(enemyColony);
-      target = picked ? picked.target : null;
+      target = findRhizoTarget(enemyColony);
       r.rhizoTargetId = target ? target.id : null;
     }
     if (!target) continue;
-    const baseRate = RHIZO_DISSOLVE_RATE * levelMultiplier(r.level);
-    const rate =
-      target.kind === "hyphae" ? baseRate * RHIZO_DISSOLVE_VS_HYPHAE : baseRate;
+    const rate = RHIZO_DISSOLVE_RATE * levelMultiplier(r.level);
     const becameDisabled = damageDisable(target, rate * dt);
     if (becameDisabled) r.rhizoTargetId = null;
   }
 
-  // Fruiting surge: charge over time (slowed by own smother fill), fire burst at threshold.
+  // Fruiting surge: charges over time, but slows proportionally to its own disable
+  // meter (any incoming pressure delays the burst). On burst, splash disable damage
+  // hits every active enemy combat structure (decomposers are not hit).
   for (const f of ownColony.slots) {
     if (!f || f.kind !== "fruiting") continue;
     if (f.status !== "active") continue;
-    const smotherFill = f.disableMeter / DISABLE_THRESHOLD;
-    const slow = HYPHAE_SMOTHER_SURGE_SLOW * smotherFill;
+    const meterFill = f.disableMeter / DISABLE_THRESHOLD;
+    const slow = SURGE_SLOW_MAX * meterFill;
     const rate = SURGE_CHARGE_RATE * levelMultiplier(f.level) * (1 - slow);
     f.surgeCharge = Math.min(
       SURGE_THRESHOLD,
       (f.surgeCharge ?? 0) + Math.max(0, rate) * dt,
     );
     if ((f.surgeCharge ?? 0) >= SURGE_THRESHOLD) {
-      // Fire a burst.
-      const target = findFruitingTarget(enemyColony);
-      if (target) {
-        damageDisable(target, SURGE_BURST_DAMAGE * levelMultiplier(f.level));
+      const damage = SURGE_BURST_DAMAGE * levelMultiplier(f.level);
+      let firstTargetId: number | null = null;
+      for (const e of enemyColony.slots) {
+        if (!e) continue;
+        if (e.status !== "active") continue;
+        if (e.kind === "decomposer") continue;
+        damageDisable(e, damage);
+        if (firstTargetId === null) firstTargetId = e.id;
       }
       f.surgeCharge = 0;
-      f.surgeTimer = SURGE_BURST_DURATION;
-      f.surgeTargetId = target ? target.id : null;
+      f.surgeTimer = SURGE_BURST_VISUAL_DURATION;
+      f.surgeTargetId = firstTargetId;
     }
   }
 }

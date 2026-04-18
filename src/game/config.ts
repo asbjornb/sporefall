@@ -19,6 +19,8 @@ export interface StructureConfig {
   basePressure: number;
   /** Extra nutrient income while active. Only meaningful for decomposer. */
   incomeBonus: number;
+  /** Passive decay per second of a non-zero disable meter. Kind-specific toughness. */
+  disableDecay: number;
   label: string;
   short: string;
   color: number;
@@ -32,6 +34,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     mutateCost: 25,
     basePressure: 3,
     incomeBonus: 0,
+    disableDecay: 3,
     label: "Hyphal Mat",
     short: "Hyphae",
     color: 0x7a8a3a,
@@ -43,6 +46,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     mutateCost: 40,
     basePressure: 4,
     incomeBonus: 0,
+    disableDecay: 5,
     label: "Rhizomorph",
     short: "Rhizo",
     color: 0xbfc4c9,
@@ -52,8 +56,9 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     buildTime: 10,
     mutateTime: 10,
     mutateCost: 60,
-    basePressure: 8,
+    basePressure: 5,
     incomeBonus: 0,
+    disableDecay: 4,
     label: "Fruiting Cluster",
     short: "Fruit",
     color: 0x8a4fa8,
@@ -65,6 +70,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     mutateCost: 35,
     basePressure: 0,
     incomeBonus: 1.5,
+    disableDecay: 4,
     label: "Decomposer",
     short: "Decom",
     color: 0xc08040,
@@ -88,31 +94,21 @@ export const FRONT_SPEED = 0.008;
 export const DISABLE_THRESHOLD = 100;
 /** Seconds a disabled structure stays offline before recovering to active. */
 export const DISABLE_DURATION = 6;
-/** Passive decay of any non-zero disable meter per second. Keeps brief exposure from accumulating forever. */
-export const DISABLE_METER_DECAY = 6;
 
-/** Hyphae smother: per-active-hyphae disable rate applied to every active enemy fruiting per second. */
-export const HYPHAE_SMOTHER_RATE = 9;
-/**
- * Maximum proportional slow on a fruiting's surge charge from its own smother meter.
- * 1.0 = full halt at meter == threshold; 0 = no slow.
- */
-export const HYPHAE_SMOTHER_SURGE_SLOW = 0.85;
-
-/** Rhizomorph dissolve rate (disable damage / second) at level 1 against non-hyphae targets. */
-export const RHIZO_DISSOLVE_RATE = 6;
-/** Multiplier vs hyphae targets. */
-export const RHIZO_DISSOLVE_VS_HYPHAE = 3;
+/** Rhizomorph dissolve rate (disable damage / second) at level 1. Applies to any target. */
+export const RHIZO_DISSOLVE_RATE = 10;
 
 /** Fruiting surge meter threshold. */
 export const SURGE_THRESHOLD = 100;
 /** Base surge charge rate at level 1, per second. */
 export const SURGE_CHARGE_RATE = 12;
-/** Disable damage delivered by a single fruiting burst at level 1. ~one-shots a level-1 rhizo. */
-export const SURGE_BURST_DAMAGE = 110;
-/** Seconds the post-burst pressure spike lasts. */
-export const SURGE_BURST_DURATION = 1.6;
-/** Pressure multiplier on the bursting fruiting while surgeTimer > 0. */
-export const SURGE_BURST_PRESSURE_MULT = 6;
-/** Residual pressure multiplier on a fruiting outside its burst window. */
-export const FRUITING_RESIDUAL_PRESSURE_MULT = 0.25;
+/** Per-target disable damage on burst, level 1. Burst is AoE — hits every active enemy (except decomposer). */
+export const SURGE_BURST_DAMAGE = 60;
+/** Seconds the burst-fired visual state lasts (animation only, no gameplay effect). */
+export const SURGE_BURST_VISUAL_DURATION = 1.0;
+
+/**
+ * Max proportional slow on a fruiting's own surge charge when its disable meter is full.
+ * Applies regardless of the meter's source — any pressure on the fruiting delays its burst.
+ */
+export const SURGE_SLOW_MAX = 0.85;

@@ -3,12 +3,10 @@ import { SimpleAI, type AIDifficulty } from "../game/ai";
 import {
   DISABLE_DURATION,
   DISABLE_THRESHOLD,
-  HYPHAE_SMOTHER_RATE,
   SLOT_COUNT,
   START_COUNTDOWN,
   STRUCTURES,
   SURGE_THRESHOLD,
-  levelMultiplier,
 } from "../game/config";
 import {
   build,
@@ -697,16 +695,6 @@ export class GameScene extends Phaser.Scene {
     return null;
   }
 
-  private smotherRateOf(side: Side): number {
-    let rate = 0;
-    for (const s of this.state[side].slots) {
-      if (s && s.kind === "hyphae" && s.status === "active") {
-        rate += HYPHAE_SMOTHER_RATE * levelMultiplier(s.level);
-      }
-    }
-    return rate;
-  }
-
   private drawLog(): void {
     const L = this.layout;
 
@@ -954,8 +942,6 @@ export class GameScene extends Phaser.Scene {
     const colony = this.state[side];
     const positions = side === "left" ? this.layout.leftSlots : this.layout.rightSlots;
     const r = this.layout.slotRadius;
-    const enemySide: Side = side === "left" ? "right" : "left";
-    const enemySmother = this.smotherRateOf(enemySide);
     for (let i = 0; i < SLOT_COUNT; i++) {
       const basePos = positions[i];
       const s = colony.slots[i];
@@ -1078,10 +1064,12 @@ export class GameScene extends Phaser.Scene {
         this.fx.fillStyle(0xc080ff, 1);
         const fillH = meterH * charge;
         this.fx.fillRect(meterX, meterY + (meterH - fillH), meterW, fillH);
-        // Smother haze — green wash if any enemy hyphae are smothering this fruiting.
-        if (enemySmother > 0) {
-          const intensity = Math.min(0.45, 0.12 + enemySmother / 60);
-          this.fx.fillStyle(0x9bd45a, intensity);
+        // Suppression haze — purple wash when this fruiting has disable pressure on it.
+        // Any source that fills the meter also slows the surge, so this reflects both.
+        if (s.disableMeter > 0) {
+          const fill = s.disableMeter / DISABLE_THRESHOLD;
+          const intensity = Math.min(0.45, 0.12 + fill * 0.4);
+          this.fx.fillStyle(0xb080d8, intensity);
           this.fx.fillCircle(x, y, r + 6);
         }
       }
