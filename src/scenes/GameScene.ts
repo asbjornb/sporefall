@@ -1,6 +1,5 @@
 import Phaser from "phaser";
 import { SimpleAI, type AIDifficulty } from "../game/ai";
-import { applyCommand } from "../game/commands";
 import {
   DISABLE_DURATION,
   DISABLE_THRESHOLD,
@@ -13,14 +12,12 @@ import {
   nextUpgradeTime,
 } from "../game/config";
 import { mulberry32 } from "../game/rng";
+import { FIXED_DT, SimRunner } from "../game/SimRunner";
 import {
-  build,
   canBuild,
   canMutate,
   createGameState,
-  mutate,
   pressureOf,
-  step,
 } from "../game/sim";
 import { TutorialDirector } from "../game/tutorial";
 import type { GameState, Side, Structure, StructureKind } from "../game/types";
@@ -313,6 +310,7 @@ function computeLayout(W: number, H: number): Layout {
 type Phase = "menu" | "playing";
 
 export class GameScene extends Phaser.Scene {
+  private runner!: SimRunner;
   private state!: GameState;
   private ai!: SimpleAI;
   private paused = false;
@@ -405,7 +403,8 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.difficulty = loadDifficulty();
-    this.state = createGameState();
+    this.runner = new SimRunner(createGameState());
+    this.state = this.runner.state;
     this.ai = new SimpleAI("right", this.difficulty, mulberry32(aiSeed()));
     this.layout = computeLayout(this.scale.width, this.scale.height);
     emitPhase(this.phase);
@@ -620,13 +619,14 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, deltaMs: number): void {
     const dt = Math.min(0.1, deltaMs / 1000);
     if (this.phase === "playing" && !this.state.winner && !this.paused) {
-      step(this.state, dt);
-      if (this.tutorial.active) {
-        this.tutorial.update(this.state, dt);
-      } else {
-        const cmd = this.ai.update(this.state, dt);
-        if (cmd) applyCommand(this.state, cmd);
-      }
+      this.runner.advance(deltaMs, (state) => {
+        if (this.tutorial.active) {
+          this.tutorial.update(state, FIXED_DT);
+        } else {
+          const cmd = this.ai.update(state, FIXED_DT);
+          if (cmd) this.runner.applyNow(cmd);
+        }
+      });
     } else if (this.phase === "menu") {
       // Keep a ticking clock so the menu's subtle pulse has something to ride on,
       // but never advance the match clock (countdown, front, pressure stay still).
@@ -1501,7 +1501,7 @@ export class GameScene extends Phaser.Scene {
 
   private onBuildTap(kind: StructureKind): void {
     if (this.state.winner || this.paused) return;
-    build(this.state, "left", kind);
+    this.runner.applyNow({ kind: "build", side: "left", structure: kind });
   }
 
   // ---------- UI: pause/restart controls ----------
@@ -2000,7 +2000,7 @@ export class GameScene extends Phaser.Scene {
     const idx = this.selectedSlotIdx;
     if (idx === null) return;
     if (canMutate(this.state, "left", idx)) {
-      mutate(this.state, "left", idx);
+      this.runner.applyNow({ kind: "mutate", side: "left", slotIdx: idx });
     }
   }
 
