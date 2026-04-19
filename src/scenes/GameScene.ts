@@ -1456,7 +1456,7 @@ export class GameScene extends Phaser.Scene {
       this.winText.setText("");
       return;
     }
-    const msg = this.state.winner === "left" ? "VICTORY" : "DEFEAT";
+    const msg = this.state.winner === this.ourSide ? "VICTORY" : "DEFEAT";
     this.winText.setText(`${msg}\ntap for menu`);
   }
 
