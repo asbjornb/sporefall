@@ -51,6 +51,29 @@
       #fullscreen-btn:hover {
         background: rgba(27, 18, 10, 0.8);
       }
+      #mp-btn {
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(27, 18, 10, 0.55);
+        color: #e8d7b6;
+        border: 1px solid rgba(232, 215, 182, 0.35);
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-family: inherit;
+        padding: 6px 10px;
+        cursor: pointer;
+        z-index: 20;
+      }
+      #mp-btn.visible {
+        display: flex;
+      }
+      #mp-btn:hover {
+        background: rgba(27, 18, 10, 0.8);
+      }
       #spread-btn {
         position: fixed;
         display: none;
@@ -112,13 +135,147 @@
       :-webkit-full-screen #mobile-hint {
         display: none;
       }
+      #mp-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(10, 7, 4, 0.82);
+        z-index: 30;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      #mp-overlay.visible {
+        display: flex;
+      }
+      #mp-panel {
+        max-width: 420px;
+        width: 100%;
+        background: rgba(40, 28, 16, 0.95);
+        border: 2px solid rgba(155, 176, 74, 0.7);
+        border-radius: 12px;
+        padding: 20px;
+        color: #f0e2bc;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+      #mp-panel h2 {
+        margin: 0 0 10px 0;
+        color: #f8ecc8;
+        font-size: 1.2rem;
+        letter-spacing: 0.02em;
+      }
+      #mp-panel p {
+        margin: 0 0 12px 0;
+        font-size: 0.95rem;
+        color: #e8d7b6;
+      }
+      .mp-btn {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        background: rgba(58, 42, 24, 0.95);
+        color: #f8ecc8;
+        border: 2px solid rgba(155, 176, 74, 0.7);
+        border-radius: 8px;
+        padding: 12px 14px;
+        font-size: 1rem;
+        font-weight: bold;
+        cursor: pointer;
+        margin-top: 8px;
+        font-family: inherit;
+      }
+      .mp-btn:hover {
+        background: rgba(74, 54, 32, 0.95);
+      }
+      .mp-btn.secondary {
+        border-color: rgba(232, 215, 182, 0.45);
+      }
+      #mp-code-input {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        background: rgba(20, 14, 8, 0.8);
+        border: 1px solid rgba(232, 215, 182, 0.35);
+        color: #f8ecc8;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 1.1rem;
+        letter-spacing: 0.15em;
+        text-align: center;
+        text-transform: uppercase;
+        padding: 10px;
+        border-radius: 6px;
+        margin-top: 8px;
+      }
+      #mp-share {
+        display: none;
+        margin-top: 12px;
+      }
+      #mp-share.visible {
+        display: block;
+      }
+      #mp-share-code {
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 1.8rem;
+        letter-spacing: 0.25em;
+        text-align: center;
+        padding: 10px;
+        background: rgba(20, 14, 8, 0.8);
+        border-radius: 6px;
+        border: 1px dashed rgba(155, 176, 74, 0.6);
+        color: #f8ecc8;
+      }
+      #mp-status {
+        margin-top: 10px;
+        font-size: 0.9rem;
+        color: #c9b98b;
+        min-height: 1.2em;
+      }
+      #mp-error {
+        margin-top: 8px;
+        color: #f2a67a;
+        font-size: 0.9rem;
+        min-height: 1.2em;
+      }
     </style>
   </head>
   <body>
     <div id="game"></div>
     <button id="fullscreen-btn" type="button" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
+    <button id="mp-btn" type="button" aria-label="Multiplayer">vs Friend</button>
     <button id="spread-btn" type="button">Spread</button>
     <div id="mobile-hint">Plays best fullscreen in landscape.</div>
+    <div id="mp-overlay" role="dialog" aria-label="Multiplayer">
+      <div id="mp-panel">
+        <div id="mp-home">
+          <h2>Play a friend</h2>
+          <p>No accounts, no server. Share a link over WhatsApp or copy the code.</p>
+          <button id="mp-host-btn" class="mp-btn" type="button">Host a match</button>
+          <button id="mp-join-btn" class="mp-btn secondary" type="button">Join with code</button>
+          <button id="mp-close-btn" class="mp-btn secondary" type="button">Back</button>
+        </div>
+        <div id="mp-join" style="display:none;">
+          <h2>Join a match</h2>
+          <p>Enter the 6-character code your friend sent.</p>
+          <input id="mp-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" maxlength="10" placeholder="ABC123" />
+          <button id="mp-join-go-btn" class="mp-btn" type="button">Connect</button>
+          <button id="mp-join-back-btn" class="mp-btn secondary" type="button">Back</button>
+        </div>
+        <div id="mp-share">
+          <h2>Waiting for opponent…</h2>
+          <p>Share this link with your friend:</p>
+          <div id="mp-share-code"></div>
+          <button id="mp-share-copy-btn" class="mp-btn" type="button">Copy share link</button>
+          <button id="mp-share-native-btn" class="mp-btn secondary" type="button" style="display:none;">Share…</button>
+          <button id="mp-cancel-btn" class="mp-btn secondary" type="button">Cancel</button>
+        </div>
+        <div id="mp-status"></div>
+        <div id="mp-error"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

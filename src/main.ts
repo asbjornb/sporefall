@@ -1,4 +1,13 @@
 import Phaser from "phaser";
+import { Lobby, type LobbyStatus } from "./net/Lobby";
+import {
+  generateRoomCode,
+  isValidRoomCode,
+  normalizeRoomCode,
+  parseRoomFromUrl,
+  roomShareUrl,
+} from "./net/room";
+import { TrysteroTransport } from "./net/TrysteroTransport";
 import { BootScene } from "./scenes/BootScene";
 import { GameScene } from "./scenes/GameScene";
 
@@ -141,4 +150,216 @@ if (spreadBtn) {
     }
     window.dispatchEvent(new CustomEvent("sporefall:start"));
   });
+}
+
+// ---------- Multiplayer lobby (Phase 3) ----------
+// At this phase the overlay drives the connection + handshake. Once the
+// handshake reaches `ready` we surface the seed + our side; Phase 4 picks
+// that up and kicks off the lockstep match.
+
+const mpBtn = document.getElementById("mp-btn") as HTMLButtonElement | null;
+const mpOverlay = document.getElementById("mp-overlay");
+const mpHome = document.getElementById("mp-home");
+const mpJoin = document.getElementById("mp-join");
+const mpShare = document.getElementById("mp-share");
+const mpShareCode = document.getElementById("mp-share-code");
+const mpStatus = document.getElementById("mp-status");
+const mpError = document.getElementById("mp-error");
+const mpHostBtn = document.getElementById("mp-host-btn") as HTMLButtonElement | null;
+const mpJoinBtn = document.getElementById("mp-join-btn") as HTMLButtonElement | null;
+const mpCloseBtn = document.getElementById("mp-close-btn") as HTMLButtonElement | null;
+const mpJoinBackBtn = document.getElementById("mp-join-back-btn") as HTMLButtonElement | null;
+const mpJoinGoBtn = document.getElementById("mp-join-go-btn") as HTMLButtonElement | null;
+const mpCodeInput = document.getElementById("mp-code-input") as HTMLInputElement | null;
+const mpShareCopyBtn = document.getElementById("mp-share-copy-btn") as HTMLButtonElement | null;
+const mpShareNativeBtn = document.getElementById("mp-share-native-btn") as HTMLButtonElement | null;
+const mpCancelBtn = document.getElementById("mp-cancel-btn") as HTMLButtonElement | null;
+
+let activeLobby: Lobby | null = null;
+let currentShareUrl = "";
+
+const showMpBtn = (visible: boolean): void => {
+  mpBtn?.classList.toggle("visible", visible);
+};
+
+const setMpError = (text: string): void => {
+  if (mpError) mpError.textContent = text;
+};
+
+const setMpStatus = (text: string): void => {
+  if (mpStatus) mpStatus.textContent = text;
+};
+
+type MpView = "home" | "join" | "share";
+
+const setMpView = (view: MpView): void => {
+  if (mpHome) mpHome.style.display = view === "home" ? "" : "none";
+  if (mpJoin) mpJoin.style.display = view === "join" ? "" : "none";
+  if (mpShare) mpShare.classList.toggle("visible", view === "share");
+};
+
+const openMpOverlay = (view: MpView = "home"): void => {
+  mpOverlay?.classList.add("visible");
+  setMpView(view);
+  setMpError("");
+  setMpStatus("");
+};
+
+const closeMpOverlay = (): void => {
+  mpOverlay?.classList.remove("visible");
+  activeLobby?.close();
+  activeLobby = null;
+  setMpError("");
+  setMpStatus("");
+  setMpView("home");
+};
+
+const handleLobbyStatus = (status: LobbyStatus): void => {
+  switch (status.kind) {
+    case "hosting":
+      setMpStatus("Waiting for your friend to join…");
+      setMpError("");
+      return;
+    case "joining":
+      setMpStatus(`Connecting to room ${status.code}…`);
+      setMpError("");
+      return;
+    case "handshaking":
+      setMpStatus("Peer found — syncing…");
+      return;
+    case "ready": {
+      setMpStatus(`Connected! Starting match…`);
+      setMpError("");
+      const transport = activeLobby?.transportRef();
+      // Clear the active lobby reference WITHOUT calling close() — we hand
+      // the transport off to the game scene which now owns it.
+      activeLobby = null;
+      mpOverlay?.classList.remove("visible");
+      showMpBtn(false);
+      if (transport) {
+        window.dispatchEvent(
+          new CustomEvent("sporefall:start-mp", {
+            detail: {
+              transport,
+              seed: status.seed,
+              ourSide: status.ourSide,
+              firstTick: status.firstTick,
+            },
+          }),
+        );
+      }
+      return;
+    }
+    case "error":
+      setMpError(status.message);
+      setMpStatus("");
+      activeLobby?.close();
+      activeLobby = null;
+      return;
+    case "idle":
+      return;
+  }
+};
+
+const startHost = (): void => {
+  if (activeLobby) return;
+  const code = generateRoomCode();
+  currentShareUrl = roomShareUrl(code);
+  if (mpShareCode) mpShareCode.textContent = code;
+  setMpView("share");
+  setMpError("");
+  setMpStatus("Opening room…");
+  if (mpShareNativeBtn) {
+    const canShare = typeof navigator.share === "function";
+    mpShareNativeBtn.style.display = canShare ? "" : "none";
+  }
+  try {
+    activeLobby = new Lobby({
+      role: "host",
+      code,
+      shareUrl: currentShareUrl,
+      makeTransport: (c) => new TrysteroTransport(c),
+      onStatus: handleLobbyStatus,
+    });
+  } catch (err) {
+    setMpError(err instanceof Error ? err.message : String(err));
+  }
+};
+
+const startJoin = (rawCode: string): void => {
+  if (activeLobby) return;
+  const code = normalizeRoomCode(rawCode);
+  if (!isValidRoomCode(code)) {
+    setMpError("That doesn't look like a valid 6-character code.");
+    return;
+  }
+  openMpOverlay("share");
+  if (mpShareCode) mpShareCode.textContent = code;
+  // Hide the copy controls on the guest side — they have no URL to share.
+  const copyRow = document.getElementById("mp-share-copy-btn");
+  if (copyRow) copyRow.style.display = "none";
+  if (mpShareNativeBtn) mpShareNativeBtn.style.display = "none";
+  setMpStatus(`Connecting to room ${code}…`);
+  try {
+    activeLobby = new Lobby({
+      role: "guest",
+      code,
+      makeTransport: (c) => new TrysteroTransport(c),
+      onStatus: handleLobbyStatus,
+    });
+  } catch (err) {
+    setMpError(err instanceof Error ? err.message : String(err));
+  }
+};
+
+mpBtn?.addEventListener("click", () => openMpOverlay("home"));
+mpCloseBtn?.addEventListener("click", closeMpOverlay);
+mpCancelBtn?.addEventListener("click", closeMpOverlay);
+mpHostBtn?.addEventListener("click", startHost);
+mpJoinBtn?.addEventListener("click", () => {
+  setMpView("join");
+  setMpError("");
+  mpCodeInput?.focus();
+});
+mpJoinBackBtn?.addEventListener("click", () => setMpView("home"));
+mpJoinGoBtn?.addEventListener("click", () => {
+  if (mpCodeInput) startJoin(mpCodeInput.value);
+});
+mpCodeInput?.addEventListener("keydown", (e: KeyboardEvent) => {
+  if (e.key === "Enter" && mpCodeInput) startJoin(mpCodeInput.value);
+});
+
+mpShareCopyBtn?.addEventListener("click", async () => {
+  if (!currentShareUrl) return;
+  try {
+    await navigator.clipboard.writeText(currentShareUrl);
+    mpShareCopyBtn.textContent = "Copied ✓";
+    setTimeout(() => {
+      if (mpShareCopyBtn) mpShareCopyBtn.textContent = "Copy share link";
+    }, 1500);
+  } catch {
+    setMpError("Couldn't access the clipboard — long-press the code to copy.");
+  }
+});
+
+mpShareNativeBtn?.addEventListener("click", async () => {
+  if (!currentShareUrl) return;
+  try {
+    await navigator.share({
+      title: "Sporefall — Join my match",
+      text: "Tap to join my Sporefall match:",
+      url: currentShareUrl,
+    });
+  } catch {
+    /* user cancelled */
+  }
+});
+
+// Show the MP entry point by default. (Later phases can hide it mid-match.)
+showMpBtn(true);
+
+// If the URL carries a room code, jump straight into the join flow.
+const urlRoom = parseRoomFromUrl();
+if (urlRoom) {
+  startJoin(urlRoom);
 }

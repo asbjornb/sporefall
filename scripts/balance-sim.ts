@@ -10,34 +10,16 @@
  */
 
 import { SimpleAI } from "../src/game/ai";
+import { applyCommand, type Command } from "../src/game/commands";
 import { STRUCTURES } from "../src/game/config";
-import {
-  build,
-  canBuild,
-  canMutate,
-  createGameState,
-  mutate,
-  step,
-} from "../src/game/sim";
+import { mulberry32 } from "../src/game/rng";
+import { canBuild, canMutate, createGameState, step } from "../src/game/sim";
 import type { GameState, Side, StructureKind } from "../src/game/types";
-
-// ---------- RNG ----------
-
-function mulberry32(seed: number): () => number {
-  let t = seed >>> 0;
-  return function () {
-    t = (t + 0x6d2b79f5) >>> 0;
-    let x = t;
-    x = Math.imul(x ^ (x >>> 15), x | 1);
-    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 // ---------- Agents ----------
 
 interface Agent {
-  update(state: GameState, dt: number): void;
+  update(state: GameState, dt: number): Command | null;
 }
 
 interface Strategy {
@@ -58,23 +40,21 @@ class MonoAgent implements Agent {
     private readonly upgrade: boolean,
   ) {}
 
-  update(state: GameState, dt: number): void {
-    if (state.winner || state.countdown > 0) return;
+  update(state: GameState, dt: number): Command | null {
+    if (state.winner || state.countdown > 0) return null;
     this.cooldown -= dt;
-    if (this.cooldown > 0) return;
+    if (this.cooldown > 0) return null;
 
     const colony = state[this.side];
     // Don't queue more work while something is establishing.
-    if (colony.slots.some((s) => s && s.status === "growing")) return;
+    if (colony.slots.some((s) => s && s.status === "growing")) return null;
 
     if (canBuild(state, this.side, this.kind)) {
-      if (build(state, this.side, this.kind)) {
-        this.cooldown = 0.4;
-        return;
-      }
+      this.cooldown = 0.4;
+      return { kind: "build", side: this.side, structure: this.kind };
     }
 
-    if (!this.upgrade) return;
+    if (!this.upgrade) return null;
 
     // Upgrade the lowest-level matching slot we can afford.
     let bestIdx: number | null = null;
@@ -88,9 +68,11 @@ class MonoAgent implements Agent {
         bestIdx = i;
       }
     }
-    if (bestIdx !== null && mutate(state, this.side, bestIdx)) {
+    if (bestIdx !== null) {
       this.cooldown = 0.4;
+      return { kind: "mutate", side: this.side, slotIdx: bestIdx };
     }
+    return null;
   }
 }
 
@@ -123,26 +105,24 @@ class ScriptedAgent implements Agent {
       : this.tail;
   }
 
-  update(state: GameState, dt: number): void {
-    if (state.winner || state.countdown > 0) return;
+  update(state: GameState, dt: number): Command | null {
+    if (state.winner || state.countdown > 0) return null;
     this.cooldown -= dt;
-    if (this.cooldown > 0) return;
+    if (this.cooldown > 0) return null;
 
     const colony = state[this.side];
-    if (colony.slots.some((s) => s && s.status === "growing")) return;
+    if (colony.slots.some((s) => s && s.status === "growing")) return null;
 
     const kind = this.nextKind();
     if (canBuild(state, this.side, kind)) {
-      if (build(state, this.side, kind)) {
-        this.step++;
-        this.cooldown = 0.4;
-        return;
-      }
-      // Keep saving for the scripted kind — don't deviate.
-      return;
+      this.step++;
+      this.cooldown = 0.4;
+      return { kind: "build", side: this.side, structure: kind };
     }
 
-    // All slots full? Upgrade tail first, then opener kinds in sequence order.
+    // Slots full or can't afford yet. Upgrade tail first, then opener kinds.
+    // (When the blocker is nutrients, canMutate will fail too and we'll just
+    // keep saving — same behavior as before the refactor.)
     const priority: StructureKind[] = [
       this.tail,
       ...this.sequence.filter((k) => k !== this.tail),
@@ -159,11 +139,12 @@ class ScriptedAgent implements Agent {
           bestIdx = i;
         }
       }
-      if (bestIdx !== null && mutate(state, this.side, bestIdx)) {
+      if (bestIdx !== null) {
         this.cooldown = 0.4;
-        return;
+        return { kind: "mutate", side: this.side, slotIdx: bestIdx };
       }
     }
+    return null;
   }
 }
 
@@ -206,8 +187,10 @@ function runMatch(
   const rightAgent = right.make("right", mulberry32(seed * 2 + 2));
   while (!state.winner && state.time < MAX_MATCH_SECONDS) {
     step(state, TICK_DT);
-    leftAgent.update(state, TICK_DT);
-    rightAgent.update(state, TICK_DT);
+    const lcmd = leftAgent.update(state, TICK_DT);
+    if (lcmd) applyCommand(state, lcmd);
+    const rcmd = rightAgent.update(state, TICK_DT);
+    if (rcmd) applyCommand(state, rcmd);
   }
   return {
     winner: state.winner ?? "draw",

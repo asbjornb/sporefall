@@ -8,10 +8,12 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "balance": "tsx scripts/balance-sim.ts"
+    "balance": "tsx scripts/balance-sim.ts",
+    "determinism-check": "tsx scripts/determinism-check.ts"
   },
   "dependencies": {
-    "phaser": "^3.80.1"
+    "phaser": "^3.80.1",
+    "trystero": "^0.23.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
