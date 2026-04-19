@@ -328,10 +328,16 @@ export class GameScene extends Phaser.Scene {
   private mp: MpSceneConfig | null = null;
   private mpListenerCleanup: (() => void) | null = null;
   private mpRematchOverlay: {
-    bg: Phaser.GameObjects.Graphics;
+    backdrop: Phaser.GameObjects.Graphics;
+    panel: Phaser.GameObjects.Graphics;
+    result: Phaser.GameObjects.Text;
     title: Phaser.GameObjects.Text;
+    yesBg: Phaser.GameObjects.Graphics;
     yes: Phaser.GameObjects.Text;
+    yesZone: Phaser.GameObjects.Zone;
+    noBg: Phaser.GameObjects.Graphics;
     no: Phaser.GameObjects.Text;
+    noZone: Phaser.GameObjects.Zone;
     status: Phaser.GameObjects.Text;
   } | null = null;
   private mpWeAcceptedRematch = false;
@@ -1456,6 +1462,13 @@ export class GameScene extends Phaser.Scene {
       this.winText.setText("");
       return;
     }
+    // In multiplayer the rematch overlay owns the end-of-match UI (showing
+    // the result alongside Rematch/Leave), so leave the banner blank to
+    // avoid a visual clash with the modal.
+    if (this.mp) {
+      this.winText.setText("");
+      return;
+    }
     const msg = this.state.winner === this.ourSide ? "VICTORY" : "DEFEAT";
     this.winText.setText(`${msg}\ntap for menu`);
   }
@@ -2422,6 +2435,9 @@ export class GameScene extends Phaser.Scene {
       this.createRematchOverlay();
     }
     const o = this.mpRematchOverlay!;
+    const won = this.state.winner === this.ourSide;
+    o.result.setText(won ? "VICTORY" : "DEFEAT");
+    o.result.setColor(won ? "#f8e8c0" : "#e8b098");
     let status = "";
     if (this.mpWeAcceptedRematch && !this.mpRemoteAcceptedRematch) {
       status = "Waiting for opponent to accept…";
@@ -2429,24 +2445,45 @@ export class GameScene extends Phaser.Scene {
       status = "Opponent is ready for a rematch.";
     }
     o.status.setText(status);
+    this.layoutRematchOverlay();
   }
 
   private createRematchOverlay(): void {
-    const W = this.scale.width;
-    const H = this.scale.height;
-    const bg = this.add.graphics().setDepth(35);
-    bg.fillStyle(0x0a0704, 0.72);
-    bg.fillRect(0, 0, W, H);
-    const title = this.add
-      .text(W / 2, Math.round(H * 0.38), "Play again?", {
-        fontSize: "34px",
-        color: "#f8ecc8",
-        fontFamily: "system-ui, sans-serif",
+    const backdrop = this.add.graphics().setDepth(35);
+    const panel = this.add.graphics().setDepth(36);
+    const result = this.add
+      .text(0, 0, "", {
+        fontSize: "56px",
+        color: "#f8e8c0",
         fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+        align: "center",
+        stroke: "#1b120a",
+        strokeThickness: 3,
       })
       .setOrigin(0.5)
-      .setDepth(36);
-    const yes = this.makeRematchButton(W / 2 - 110, Math.round(H * 0.52), "Rematch", () => {
+      .setDepth(37);
+    const title = this.add
+      .text(0, 0, "Play again?", {
+        fontSize: "24px",
+        color: "#e8d7b6",
+        fontFamily: "system-ui, sans-serif",
+      })
+      .setOrigin(0.5)
+      .setDepth(37);
+
+    const yesBg = this.add.graphics().setDepth(36);
+    const yes = this.add
+      .text(0, 0, "Rematch", {
+        fontSize: "22px",
+        color: "#f8ecc8",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+      })
+      .setOrigin(0.5)
+      .setDepth(38);
+    const yesZone = this.add.zone(0, 0, 10, 10).setDepth(38);
+    yesZone.on("pointerdown", () => {
       if (this.mpWeAcceptedRematch) return;
       this.mpWeAcceptedRematch = true;
       this.sendMp({
@@ -2459,50 +2496,133 @@ export class GameScene extends Phaser.Scene {
       });
       this.tryStartRematch();
     });
-    const no = this.makeRematchButton(W / 2 + 110, Math.round(H * 0.52), "Leave", () => {
+
+    const noBg = this.add.graphics().setDepth(36);
+    const no = this.add
+      .text(0, 0, "Leave", {
+        fontSize: "22px",
+        color: "#f8ecc8",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+      })
+      .setOrigin(0.5)
+      .setDepth(38);
+    const noZone = this.add.zone(0, 0, 10, 10).setDepth(38);
+    noZone.on("pointerdown", () => {
       this.sendMp({ t: "rematch", accept: false });
       this.backToMenu();
     });
+
     const status = this.add
-      .text(W / 2, Math.round(H * 0.62), "", {
+      .text(0, 0, "", {
         fontSize: "18px",
         color: "#c9b98b",
         fontFamily: "system-ui, sans-serif",
+        align: "center",
       })
       .setOrigin(0.5)
-      .setDepth(36);
-    this.mpRematchOverlay = { bg, title, yes, no, status };
+      .setDepth(37);
+
+    this.mpRematchOverlay = {
+      backdrop,
+      panel,
+      result,
+      title,
+      yesBg,
+      yes,
+      yesZone,
+      noBg,
+      no,
+      noZone,
+      status,
+    };
   }
 
-  private makeRematchButton(
-    x: number,
-    y: number,
-    label: string,
-    onTap: () => void,
-  ): Phaser.GameObjects.Text {
-    const t = this.add
-      .text(x, y, label, {
-        fontSize: "22px",
-        color: "#f8ecc8",
-        backgroundColor: "rgba(58, 42, 24, 0.95)",
-        padding: { x: 22, y: 12 },
-        fontFamily: "system-ui, sans-serif",
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5)
-      .setDepth(37)
-      .setInteractive({ useHandCursor: true });
-    t.on("pointerdown", onTap);
-    return t;
+  private layoutRematchOverlay(): void {
+    const o = this.mpRematchOverlay;
+    if (!o) return;
+    const L = this.layout;
+    const W = L.W;
+    const H = L.H;
+    const sc = L.uiScale;
+    const px = (n: number) => `${Math.max(12, Math.round(n * sc))}px`;
+
+    // Subtle full-screen dim so the match state behind stays visible but
+    // recedes.
+    o.backdrop.clear();
+    o.backdrop.fillStyle(0x0a0704, 0.55);
+    o.backdrop.fillRect(0, 0, W, H);
+
+    // Centered panel card.
+    const panelW = Math.min(W - Math.round(40 * sc), Math.round(520 * sc));
+    const panelH = Math.round(340 * sc);
+    const panelX = Math.round(W / 2 - panelW / 2);
+    const panelY = Math.round(H / 2 - panelH / 2);
+    o.panel.clear();
+    o.panel.fillStyle(0x2a1c10, 0.96);
+    o.panel.fillRoundedRect(panelX, panelY, panelW, panelH, 14);
+    o.panel.lineStyle(2, 0xf5e8c8, 0.6);
+    o.panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 14);
+
+    // Result headline.
+    o.result.setFontSize(px(56));
+    o.result.setPosition(W / 2, panelY + Math.round(panelH * 0.26));
+
+    // "Play again?" subtitle below the result.
+    o.title.setFontSize(px(24));
+    o.title.setPosition(W / 2, panelY + Math.round(panelH * 0.5));
+
+    // Buttons: side-by-side, horizontally centered.
+    const btnW = Math.round(Math.min(panelW * 0.4, 180 * sc));
+    const btnH = Math.round(52 * sc);
+    const gap = Math.round(20 * sc);
+    const btnY = panelY + Math.round(panelH * 0.7);
+    const yesX = Math.round(W / 2 - btnW - gap / 2);
+    const noX = Math.round(W / 2 + gap / 2);
+
+    o.yesBg.clear();
+    o.yesBg.fillStyle(0x3a5a28, 0.95);
+    o.yesBg.fillRoundedRect(yesX, btnY, btnW, btnH, 10);
+    o.yesBg.lineStyle(2, 0xf5e8c8, 0.8);
+    o.yesBg.strokeRoundedRect(yesX, btnY, btnW, btnH, 10);
+    o.yes.setFontSize(px(22));
+    o.yes.setPosition(yesX + btnW / 2, btnY + btnH / 2);
+    o.yesZone.setPosition(yesX + btnW / 2, btnY + btnH / 2).setSize(btnW, btnH);
+    if (!o.yesZone.input?.enabled) {
+      o.yesZone.setInteractive({ useHandCursor: true });
+    }
+
+    o.noBg.clear();
+    o.noBg.fillStyle(0x5a2820, 0.92);
+    o.noBg.fillRoundedRect(noX, btnY, btnW, btnH, 10);
+    o.noBg.lineStyle(2, 0xf5e8c8, 0.8);
+    o.noBg.strokeRoundedRect(noX, btnY, btnW, btnH, 10);
+    o.no.setFontSize(px(22));
+    o.no.setPosition(noX + btnW / 2, btnY + btnH / 2);
+    o.noZone.setPosition(noX + btnW / 2, btnY + btnH / 2).setSize(btnW, btnH);
+    if (!o.noZone.input?.enabled) {
+      o.noZone.setInteractive({ useHandCursor: true });
+    }
+
+    // Status text pinned just inside the bottom of the panel.
+    o.status.setFontSize(px(18));
+    o.status.setPosition(W / 2, panelY + panelH - Math.round(22 * sc));
   }
 
   private disposeRematchOverlay(): void {
     if (!this.mpRematchOverlay) return;
-    this.mpRematchOverlay.bg.destroy();
-    this.mpRematchOverlay.title.destroy();
-    this.mpRematchOverlay.yes.destroy();
-    this.mpRematchOverlay.no.destroy();
-    this.mpRematchOverlay.status.destroy();
+    const o = this.mpRematchOverlay;
+    o.backdrop.destroy();
+    o.panel.destroy();
+    o.result.destroy();
+    o.title.destroy();
+    o.yesBg.destroy();
+    o.yes.destroy();
+    o.yesZone.destroy();
+    o.noBg.destroy();
+    o.no.destroy();
+    o.noZone.destroy();
+    o.status.destroy();
     this.mpRematchOverlay = null;
   }
 
