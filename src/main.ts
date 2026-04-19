@@ -227,16 +227,29 @@ const handleLobbyStatus = (status: LobbyStatus): void => {
     case "handshaking":
       setMpStatus("Peer found — syncing…");
       return;
-    case "ready":
-      setMpStatus(
-        `Connected! Seed ${status.seed.toString(16)}, you are ${status.ourSide}.`,
-      );
-      // Phase 4 will pick this up to start the lockstep match. For now the
-      // event is a clean handoff surface so other code can wire in.
-      window.dispatchEvent(
-        new CustomEvent("sporefall:mp-ready", { detail: status }),
-      );
+    case "ready": {
+      setMpStatus(`Connected! Starting match…`);
+      setMpError("");
+      const transport = activeLobby?.transportRef();
+      // Clear the active lobby reference WITHOUT calling close() — we hand
+      // the transport off to the game scene which now owns it.
+      activeLobby = null;
+      mpOverlay?.classList.remove("visible");
+      showMpBtn(false);
+      if (transport) {
+        window.dispatchEvent(
+          new CustomEvent("sporefall:start-mp", {
+            detail: {
+              transport,
+              seed: status.seed,
+              ourSide: status.ourSide,
+              firstTick: status.firstTick,
+            },
+          }),
+        );
+      }
       return;
+    }
     case "error":
       setMpError(status.message);
       setMpStatus("");

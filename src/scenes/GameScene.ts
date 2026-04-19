@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { SimpleAI, type AIDifficulty } from "../game/ai";
+import { type Command } from "../game/commands";
 import {
   DISABLE_DURATION,
   DISABLE_THRESHOLD,
@@ -11,8 +12,8 @@ import {
   nextUpgradeCost,
   nextUpgradeTime,
 } from "../game/config";
-import { mulberry32 } from "../game/rng";
-import { FIXED_DT, SimRunner } from "../game/SimRunner";
+import { hashState, mulberry32 } from "../game/rng";
+import { DEFAULT_INPUT_DELAY, FIXED_DT, SimRunner } from "../game/SimRunner";
 import {
   canBuild,
   canMutate,
@@ -21,11 +22,21 @@ import {
 } from "../game/sim";
 import { TutorialDirector } from "../game/tutorial";
 import type { GameState, Side, Structure, StructureKind } from "../game/types";
+import type { NetMessage, Transport } from "../net/Transport";
+
+export interface MpSceneConfig {
+  transport: Transport;
+  seed: number;
+  ourSide: Side;
+  firstTick: number;
+}
 
 export interface GameSceneData {
   tutorial?: boolean;
   /** When true, skip the pre-game menu (used by Restart). */
   skipMenu?: boolean;
+  /** Present for multiplayer matches. Null/undefined means single-player. */
+  mp?: MpSceneConfig;
 }
 
 const LEFT_TINT = 0x9bb04a;
@@ -313,6 +324,20 @@ export class GameScene extends Phaser.Scene {
   private runner!: SimRunner;
   private state!: GameState;
   private ai!: SimpleAI;
+  private ourSide: Side = "left";
+  private mp: MpSceneConfig | null = null;
+  private mpListenerCleanup: (() => void) | null = null;
+  private mpRematchOverlay: {
+    bg: Phaser.GameObjects.Graphics;
+    title: Phaser.GameObjects.Text;
+    yes: Phaser.GameObjects.Text;
+    no: Phaser.GameObjects.Text;
+    status: Phaser.GameObjects.Text;
+  } | null = null;
+  private mpWeAcceptedRematch = false;
+  private mpRemoteAcceptedRematch = false;
+  private mpPendingRematchSeed: number | null = null;
+  private mpStallOverlay: Phaser.GameObjects.Text | null = null;
   private paused = false;
   private phase: Phase = "menu";
   private titleText!: Phaser.GameObjects.Text;
@@ -394,20 +419,31 @@ export class GameScene extends Phaser.Scene {
     this.selectedSlotIdx = null;
     this.paused = false;
     this.summaryVisible = false;
+    this.mp = data?.mp ?? null;
+    this.ourSide = this.mp ? this.mp.ourSide : "left";
+    this.mpWeAcceptedRematch = false;
+    this.mpRemoteAcceptedRematch = false;
+    this.mpPendingRematchSeed = null;
     // Tutorials skip the menu and go straight to play; a fresh match (or
     // restart via the in-game button) also jumps back into play. Only the
     // very first load — triggered from BootScene — lands on the menu.
+    // Multiplayer also goes straight to playing once the lobby handshake is done.
     this.phase =
-      data?.tutorial || data?.skipMenu ? "playing" : "menu";
+      data?.tutorial || data?.skipMenu || this.mp ? "playing" : "menu";
   }
 
   create(): void {
     this.difficulty = loadDifficulty();
     this.runner = new SimRunner(createGameState());
     this.state = this.runner.state;
+    // The AI is constructed in every mode so tutorial-to-menu transitions can
+    // still reset it; in MP we simply never tick it.
     this.ai = new SimpleAI("right", this.difficulty, mulberry32(aiSeed()));
     this.layout = computeLayout(this.scale.width, this.scale.height);
     emitPhase(this.phase);
+    if (this.mp) {
+      this.setupMultiplayer(this.mp);
+    }
 
     if (this.tutorial.active) {
       // Tutorial mode: skip countdown, grant ample nutrients, keep enemy passive.
@@ -546,8 +582,9 @@ export class GameScene extends Phaser.Scene {
       zone.setSize(rect.w, rect.h);
     });
 
+    const oursSlots = this.ourSide === "left" ? L.leftSlots : L.rightSlots;
     this.slotHit.forEach((hit, i) => {
-      const pos = L.leftSlots[i];
+      const pos = oursSlots[i];
       hit.setPosition(pos.x, pos.y);
       hit.setRadius(Math.max(18, L.slotRadius + Math.round(3 * sc)));
     });
@@ -620,6 +657,12 @@ export class GameScene extends Phaser.Scene {
     const dt = Math.min(0.1, deltaMs / 1000);
     if (this.phase === "playing" && !this.state.winner && !this.paused) {
       this.runner.advance(deltaMs, (state) => {
+        if (this.mp) {
+          // Multiplayer: no local AI, no tutorial. Remote commands arrive via
+          // the transport and get applied as part of the tick's input frame
+          // inside the runner itself.
+          return;
+        }
         if (this.tutorial.active) {
           this.tutorial.update(state, FIXED_DT);
         } else {
@@ -627,6 +670,7 @@ export class GameScene extends Phaser.Scene {
           if (cmd) this.runner.applyNow(cmd);
         }
       });
+      if (this.mp) this.updateMultiplayer();
     } else if (this.phase === "menu") {
       // Keep a ticking clock so the menu's subtle pulse has something to ride on,
       // but never advance the match clock (countdown, front, pressure stay still).
@@ -955,7 +999,7 @@ export class GameScene extends Phaser.Scene {
       // Shake offset for player-side denied taps on disabled slots.
       let shakeDx = 0;
       let shakeDy = 0;
-      if (side === "left" && this.slotShake[i] > 0) {
+      if (side === this.ourSide && this.slotShake[i] > 0) {
         const t = this.slotShake[i];
         shakeDx = Math.sin(t * 60) * 4;
       }
@@ -1481,7 +1525,7 @@ export class GameScene extends Phaser.Scene {
       const w = container.getData("w") as number;
       const h = container.getData("h") as number;
       const cfg = STRUCTURES[kind];
-      const can = canBuild(this.state, "left", kind);
+      const can = canBuild(this.state, this.ourSide, kind);
 
       bg.fillStyle(can ? 0x3a2a18 : 0x241a10, 1);
       bg.fillRoundedRect(x, y, w, h, 10);
@@ -1501,7 +1545,11 @@ export class GameScene extends Phaser.Scene {
 
   private onBuildTap(kind: StructureKind): void {
     if (this.state.winner || this.paused) return;
-    this.runner.applyNow({ kind: "build", side: "left", structure: kind });
+    this.runner.submitLocalCommand({
+      kind: "build",
+      side: this.ourSide,
+      structure: kind,
+    });
   }
 
   // ---------- UI: pause/restart controls ----------
@@ -1751,9 +1799,16 @@ export class GameScene extends Phaser.Scene {
     // through Phaser's queued input (see spreadEl comment for details).
     this.spreadEl = document.getElementById("spread-btn") as HTMLButtonElement | null;
     const onStart = (): void => this.startPlay();
+    const onStartMp = (ev: Event): void => {
+      const detail = (ev as CustomEvent<MpSceneConfig>).detail;
+      if (!detail) return;
+      this.scene.restart({ mp: detail } satisfies GameSceneData);
+    };
     window.addEventListener("sporefall:start", onStart);
+    window.addEventListener("sporefall:start-mp", onStartMp);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       window.removeEventListener("sporefall:start", onStart);
+      window.removeEventListener("sporefall:start-mp", onStartMp);
     });
   }
 
@@ -1951,7 +2006,7 @@ export class GameScene extends Phaser.Scene {
 
   private onSlotTap(idx: number): void {
     if (this.state.winner) return;
-    const s = this.state.left.slots[idx];
+    const s = this.state[this.ourSide].slots[idx];
     // Only selectable slots with a structure. Empty slots use the build bar.
     if (!s) {
       this.selectedSlotIdx = null;
@@ -1999,8 +2054,12 @@ export class GameScene extends Phaser.Scene {
     if (this.paused) return;
     const idx = this.selectedSlotIdx;
     if (idx === null) return;
-    if (canMutate(this.state, "left", idx)) {
-      this.runner.applyNow({ kind: "mutate", side: "left", slotIdx: idx });
+    if (canMutate(this.state, this.ourSide, idx)) {
+      this.runner.submitLocalCommand({
+        kind: "mutate",
+        side: this.ourSide,
+        slotIdx: idx,
+      });
     }
   }
 
@@ -2012,7 +2071,7 @@ export class GameScene extends Phaser.Scene {
       this.upgradeBtnZone.setPosition(-9999, -9999);
       return;
     }
-    const s = this.state.left.slots[idx];
+    const s = this.state[this.ourSide].slots[idx];
     if (!s) {
       this.selectedSlotIdx = null;
       this.upgradeBtnLabel.setVisible(false);
@@ -2020,7 +2079,9 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const cfg = STRUCTURES[s.kind];
-    const pos = this.layout.leftSlots[idx];
+    const pos = this.ourSide === "left"
+      ? this.layout.leftSlots[idx]
+      : this.layout.rightSlots[idx];
 
     // Selection ring on the selected slot.
     const sc = this.layout.uiScale;
@@ -2034,7 +2095,7 @@ export class GameScene extends Phaser.Scene {
     const btnX = pos.x;
     const btnY = Math.max(btnH / 2 + 4, pos.y - Math.round(68 * sc));
 
-    const can = canMutate(this.state, "left", idx);
+    const can = canMutate(this.state, this.ourSide, idx);
     const isBusy = s.status !== "active";
 
     let text: string;
@@ -2069,7 +2130,7 @@ export class GameScene extends Phaser.Scene {
       fillColor = 0x3a2a18;
     } else {
       const need = nextUpgradeCost(s.kind, s.level) ?? 0;
-      const have = Math.floor(this.state.left.nutrients);
+      const have = Math.floor(this.state[this.ourSide].nutrients);
       text = `Upgrade → Lv${s.level + 1}\n${have}/${need}n`;
       textColor = "#8a7a60";
       borderColor = 0x4a3420;
@@ -2130,6 +2191,279 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.restart();
+  }
+
+  // ---------- multiplayer ----------
+
+  private setupMultiplayer(cfg: MpSceneConfig): void {
+    this.runner.enableLockstep({
+      ourSide: cfg.ourSide,
+      inputDelay: DEFAULT_INPUT_DELAY,
+      onEmitInput: (tick, cmds) => {
+        this.sendMp({ t: "input", tick, cmds });
+      },
+    });
+    const onMsg = (msg: NetMessage): void => this.handleMpMessage(msg);
+    const onDisc = (): void => this.handleMpDisconnect();
+    cfg.transport.onMessage(onMsg);
+    cfg.transport.onPeerDisconnect(onDisc);
+    // No clean "off" exists on the transport; Shutdown leaves the room which
+    // drops all listeners on its side. We still null-out our scene refs so
+    // late messages don't push into a dead scene.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.mpListenerCleanup?.();
+      this.mpListenerCleanup = null;
+    });
+    this.mpListenerCleanup = () => {
+      this.mp = null;
+    };
+  }
+
+  private sendMp(msg: NetMessage): void {
+    if (!this.mp) return;
+    this.mp.transport.send(msg);
+  }
+
+  private lastHashTick = -1;
+  private readonly HASH_EVERY = 30;
+
+  private updateMultiplayer(): void {
+    if (!this.mp) return;
+    // Periodic state-hash exchange for desync detection. Runs on the tick we
+    // just committed, after `advance` has returned.
+    const t = this.runner.tick - 1;
+    if (t >= 0 && t !== this.lastHashTick && t % this.HASH_EVERY === 0) {
+      this.lastHashTick = t;
+      this.sendMp({ t: "hash", tick: t, hash: hashState(this.state) });
+    }
+    this.updateStallOverlay();
+    this.updateRematchOverlay();
+  }
+
+  private handleMpMessage(msg: NetMessage): void {
+    if (!this.mp) return;
+    switch (msg.t) {
+      case "input":
+        this.runner.submitRemoteInput(msg.tick, msg.cmds as Command[]);
+        return;
+      case "hash":
+        this.handleRemoteHash(msg.tick, msg.hash);
+        return;
+      case "rematch":
+        this.handleRematchMsg(msg.accept, msg.seed);
+        return;
+      default:
+        return;
+    }
+  }
+
+  private pendingRemoteHashes: Map<number, string> = new Map();
+  private desyncReported = false;
+
+  private handleRemoteHash(tick: number, hash: string): void {
+    if (this.desyncReported) return;
+    // We may get a remote hash before or after our own tick; stash and
+    // compare when the tick has been committed locally.
+    this.pendingRemoteHashes.set(tick, hash);
+    this.checkHashes();
+  }
+
+  private checkHashes(): void {
+    if (!this.mp || this.desyncReported) return;
+    // Scan all pending remote hashes for ticks we've already passed.
+    for (const [tick, remote] of this.pendingRemoteHashes) {
+      if (tick >= this.runner.tick) continue; // we haven't committed this tick yet
+      // Replay hash locally by comparing to what we'd have computed at that
+      // tick — we don't store per-tick history, so the best we can do is
+      // compare the most recent committed hash via lastHashTick.
+      if (tick === this.lastHashTick) {
+        const ours = hashState(this.state);
+        if (ours !== remote) {
+          console.warn(
+            "[sporefall] MP desync at tick",
+            tick,
+            "local",
+            ours,
+            "remote",
+            remote,
+          );
+          this.desyncReported = true;
+          this.showStallMessage(
+            "Game out of sync. Start a new match to continue.",
+          );
+        }
+        this.pendingRemoteHashes.delete(tick);
+      } else if (tick < this.lastHashTick) {
+        // Stale — we've already moved past without comparing. Drop it.
+        this.pendingRemoteHashes.delete(tick);
+      }
+    }
+  }
+
+  private handleMpDisconnect(): void {
+    if (!this.mp) return;
+    this.showStallMessage("Opponent disconnected.");
+  }
+
+  private updateStallOverlay(): void {
+    if (!this.mp || this.desyncReported) return;
+    if (this.runner.stalledFor > 1.5 && !this.state.winner) {
+      this.showStallMessage("Waiting for opponent…");
+    } else {
+      this.hideStallMessage();
+    }
+  }
+
+  private showStallMessage(text: string): void {
+    if (!this.mpStallOverlay) {
+      this.mpStallOverlay = this.add
+        .text(this.scale.width / 2, Math.round(this.scale.height * 0.22), text, {
+          fontSize: "20px",
+          color: "#f0e2bc",
+          backgroundColor: "rgba(27, 18, 10, 0.85)",
+          padding: { x: 16, y: 8 },
+          fontFamily: "system-ui, sans-serif",
+        })
+        .setOrigin(0.5)
+        .setDepth(40);
+    }
+    this.mpStallOverlay.setText(text).setVisible(true);
+  }
+
+  private hideStallMessage(): void {
+    this.mpStallOverlay?.setVisible(false);
+  }
+
+  // ---------- rematch ----------
+
+  private updateRematchOverlay(): void {
+    if (!this.mp) return;
+    if (!this.state.winner) {
+      this.disposeRematchOverlay();
+      return;
+    }
+    if (!this.mpRematchOverlay) {
+      this.createRematchOverlay();
+    }
+    const o = this.mpRematchOverlay!;
+    let status = "";
+    if (this.mpWeAcceptedRematch && !this.mpRemoteAcceptedRematch) {
+      status = "Waiting for opponent to accept…";
+    } else if (!this.mpWeAcceptedRematch && this.mpRemoteAcceptedRematch) {
+      status = "Opponent is ready for a rematch.";
+    }
+    o.status.setText(status);
+  }
+
+  private createRematchOverlay(): void {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const bg = this.add.graphics().setDepth(35);
+    bg.fillStyle(0x0a0704, 0.72);
+    bg.fillRect(0, 0, W, H);
+    const title = this.add
+      .text(W / 2, Math.round(H * 0.38), "Play again?", {
+        fontSize: "34px",
+        color: "#f8ecc8",
+        fontFamily: "system-ui, sans-serif",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(36);
+    const yes = this.makeRematchButton(W / 2 - 110, Math.round(H * 0.52), "Rematch", () => {
+      if (this.mpWeAcceptedRematch) return;
+      this.mpWeAcceptedRematch = true;
+      this.sendMp({
+        t: "rematch",
+        accept: true,
+        seed:
+          this.ourSide === "left"
+            ? (crypto.getRandomValues(new Uint32Array(1))[0] >>> 0)
+            : undefined,
+      });
+      this.tryStartRematch();
+    });
+    const no = this.makeRematchButton(W / 2 + 110, Math.round(H * 0.52), "Leave", () => {
+      this.sendMp({ t: "rematch", accept: false });
+      this.backToMenu();
+    });
+    const status = this.add
+      .text(W / 2, Math.round(H * 0.62), "", {
+        fontSize: "18px",
+        color: "#c9b98b",
+        fontFamily: "system-ui, sans-serif",
+      })
+      .setOrigin(0.5)
+      .setDepth(36);
+    this.mpRematchOverlay = { bg, title, yes, no, status };
+  }
+
+  private makeRematchButton(
+    x: number,
+    y: number,
+    label: string,
+    onTap: () => void,
+  ): Phaser.GameObjects.Text {
+    const t = this.add
+      .text(x, y, label, {
+        fontSize: "22px",
+        color: "#f8ecc8",
+        backgroundColor: "rgba(58, 42, 24, 0.95)",
+        padding: { x: 22, y: 12 },
+        fontFamily: "system-ui, sans-serif",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(37)
+      .setInteractive({ useHandCursor: true });
+    t.on("pointerdown", onTap);
+    return t;
+  }
+
+  private disposeRematchOverlay(): void {
+    if (!this.mpRematchOverlay) return;
+    this.mpRematchOverlay.bg.destroy();
+    this.mpRematchOverlay.title.destroy();
+    this.mpRematchOverlay.yes.destroy();
+    this.mpRematchOverlay.no.destroy();
+    this.mpRematchOverlay.status.destroy();
+    this.mpRematchOverlay = null;
+  }
+
+  private handleRematchMsg(accept: boolean, seed?: number): void {
+    if (!accept) {
+      this.showStallMessage("Opponent left the match.");
+      return;
+    }
+    this.mpRemoteAcceptedRematch = true;
+    // The host is the source of truth for the new seed. Guests stash the
+    // host's seed if it arrives early; host stashes their own.
+    if (seed !== undefined) this.mpPendingRematchSeed = seed;
+    this.tryStartRematch();
+  }
+
+  private tryStartRematch(): void {
+    if (!this.mp) return;
+    if (!this.mpWeAcceptedRematch || !this.mpRemoteAcceptedRematch) return;
+    // Only the host has a seed to offer. The guest's local seed comes from
+    // the host's rematch message.
+    if (this.mpPendingRematchSeed === null) {
+      // Guest waiting for host's seed.
+      if (this.ourSide === "left") {
+        // Shouldn't happen — host sent their seed in their own accept.
+        this.mpPendingRematchSeed =
+          crypto.getRandomValues(new Uint32Array(1))[0] >>> 0;
+      } else {
+        return;
+      }
+    }
+    const seed = this.mpPendingRematchSeed;
+    // Keep the same transport; hand it back to a fresh scene restart.
+    const transport = this.mp.transport;
+    const ourSide = this.ourSide;
+    this.scene.restart({
+      mp: { transport, seed, ourSide, firstTick: 0 },
+    } satisfies GameSceneData);
   }
 }
 
