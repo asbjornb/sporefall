@@ -1,5 +1,6 @@
+import type { Command } from "./commands";
 import { STRUCTURES } from "./config";
-import { build, canBuild, canMutate, mutate } from "./sim";
+import { canBuild, canMutate } from "./sim";
 import type { ColonyState, GameState, Side, StructureKind } from "./types";
 
 export type AIDifficulty = "easy" | "hard";
@@ -45,26 +46,31 @@ export class SimpleAI {
   private cooldown = 0;
   constructor(
     private readonly side: Side,
-    private readonly difficulty: AIDifficulty = "easy",
-    private readonly rng: () => number = Math.random,
+    private readonly difficulty: AIDifficulty,
+    private readonly rng: () => number,
   ) {}
 
-  update(state: GameState, dt: number): void {
-    if (state.winner) return;
-    if (state.countdown > 0) return;
+  /**
+   * Returns the command the AI wants to play this tick, or null. The caller
+   * is responsible for applying it (typically via `applyCommand`). Pure w.r.t.
+   * `state` — never mutates it. Internal cooldown/goal advance only when a
+   * command is returned, so a dropped command lets the AI try again next tick.
+   */
+  update(state: GameState, dt: number): Command | null {
+    if (state.winner) return null;
+    if (state.countdown > 0) return null;
     this.cooldown -= dt;
-    if (this.cooldown > 0) return;
+    if (this.cooldown > 0) return null;
 
     if (this.difficulty === "hard") {
-      this.updateHard(state);
-    } else {
-      this.updateEasy(state);
+      return this.updateHard(state);
     }
+    return this.updateEasy(state);
   }
 
   // ---------- easy (legacy) ----------
 
-  private updateEasy(state: GameState): void {
+  private updateEasy(state: GameState): Command | null {
     if (!this.goal) this.goal = pickGoal(this.rng);
     const colony = state[this.side];
 
@@ -76,13 +82,11 @@ export class SimpleAI {
         } else if (colony.nutrients >= STRUCTURES[kind].cost * 0.99) {
           this.goal = null;
         }
-        return;
+        return null;
       }
-      if (build(state, this.side, kind)) {
-        this.goal = null;
-        this.cooldown = 0.5;
-      }
-      return;
+      this.goal = null;
+      this.cooldown = 0.5;
+      return { kind: "build", side: this.side, structure: kind };
     }
 
     const candidates: number[] = [];
@@ -93,18 +97,17 @@ export class SimpleAI {
       if (this.cooldown <= 0) {
         this.goal = { kind: "build", structure: "hyphae" };
       }
-      return;
+      return null;
     }
     const pick = candidates[Math.floor(this.rng() * candidates.length)];
-    if (mutate(state, this.side, pick)) {
-      this.goal = null;
-      this.cooldown = 0.5;
-    }
+    this.goal = null;
+    this.cooldown = 0.5;
+    return { kind: "mutate", side: this.side, slotIdx: pick };
   }
 
   // ---------- hard ----------
 
-  private updateHard(state: GameState): void {
+  private updateHard(state: GameState): Command | null {
     const colony = state[this.side];
     const enemy = state[this.side === "left" ? "right" : "left"];
 
@@ -152,11 +155,12 @@ export class SimpleAI {
         combatCount,
       );
 
-      if (colony.nutrients >= STRUCTURES[primary].cost) {
-        if (build(state, this.side, primary)) {
-          this.cooldown = 0.6;
-          return;
-        }
+      if (
+        colony.nutrients >= STRUCTURES[primary].cost &&
+        canBuild(state, this.side, primary)
+      ) {
+        this.cooldown = 0.6;
+        return { kind: "build", side: this.side, structure: primary };
       }
 
       // Don't over-save. If we can already afford a useful non-economy
@@ -169,21 +173,21 @@ export class SimpleAI {
         underAttack,
       );
       if (alt && canBuild(state, this.side, alt)) {
-        if (build(state, this.side, alt)) {
-          this.cooldown = 0.6;
-          return;
-        }
+        this.cooldown = 0.6;
+        return { kind: "build", side: this.side, structure: alt };
       }
       // Otherwise keep saving for the primary target.
-      return;
+      return null;
     }
 
     // ---- No free slot (or something growing): consider upgrading ----
-    if (underAttack) return; // don't sink nutrients into upgrades while losing
+    if (underAttack) return null; // don't sink nutrients into upgrades while losing
     const slotIdx = this.bestUpgradeSlot(state, colony);
-    if (slotIdx !== null && mutate(state, this.side, slotIdx)) {
+    if (slotIdx !== null) {
       this.cooldown = 0.6;
+      return { kind: "mutate", side: this.side, slotIdx };
     }
+    return null;
   }
 
   private pickBuildTarget(

@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { SimpleAI, type AIDifficulty } from "../game/ai";
+import { applyCommand } from "../game/commands";
 import {
   DISABLE_DURATION,
   DISABLE_THRESHOLD,
@@ -11,6 +12,7 @@ import {
   nextUpgradeCost,
   nextUpgradeTime,
 } from "../game/config";
+import { mulberry32 } from "../game/rng";
 import {
   build,
   canBuild,
@@ -404,7 +406,7 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.difficulty = loadDifficulty();
     this.state = createGameState();
-    this.ai = new SimpleAI("right", this.difficulty);
+    this.ai = new SimpleAI("right", this.difficulty, mulberry32(aiSeed()));
     this.layout = computeLayout(this.scale.width, this.scale.height);
     emitPhase(this.phase);
 
@@ -622,7 +624,8 @@ export class GameScene extends Phaser.Scene {
       if (this.tutorial.active) {
         this.tutorial.update(this.state, dt);
       } else {
-        this.ai.update(this.state, dt);
+        const cmd = this.ai.update(this.state, dt);
+        if (cmd) applyCommand(this.state, cmd);
       }
     } else if (this.phase === "menu") {
       // Keep a ticking clock so the menu's subtle pulse has something to ride on,
@@ -2123,11 +2126,22 @@ export class GameScene extends Phaser.Scene {
     saveDifficulty(this.difficulty);
     // On the menu, just re-label the toggle — no match to restart yet.
     if (this.phase === "menu") {
-      this.ai = new SimpleAI("right", this.difficulty);
+      this.ai = new SimpleAI("right", this.difficulty, mulberry32(aiSeed()));
       return;
     }
     this.restart();
   }
+}
+
+function aiSeed(): number {
+  // Single-player AI seed: any 32-bit unsigned int. Non-deterministic by design
+  // here — multiplayer uses the agreed match seed instead.
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return arr[0];
+  }
+  return (Math.random() * 0x100000000) >>> 0;
 }
 
 function emitPhase(phase: Phase): void {
