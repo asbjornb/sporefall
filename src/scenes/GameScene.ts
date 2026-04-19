@@ -523,13 +523,15 @@ export class GameScene extends Phaser.Scene {
       this.scale.off("resize", this.onResize, this);
     });
 
-    this.input.keyboard?.on("keydown-R", () => this.restart());
+    this.input.keyboard?.on("keydown-R", () => this.handleRestartTap());
     this.input.keyboard?.on("keydown-P", () => this.togglePause());
     this.input.keyboard?.on("keydown-SPACE", () => this.togglePause());
     // Any tap/click after the game is over drops back to the menu so the
     // player can pick difficulty or retry the tutorial before the next match.
+    // In MP we route through `leaveMatch` so the transport gets closed; the
+    // rematch overlay handles the in-game post-win flow on its own.
     this.input.on("pointerdown", () => {
-      if (this.state.winner) this.backToMenu();
+      if (this.state.winner && !this.mp) this.backToMenu();
       if (this.tutorial.active) this.tutorial.registerTap();
     });
   }
@@ -1592,7 +1594,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(16);
     restartZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation?.();
-      this.restart();
+      this.handleRestartTap();
     });
     this.restartBtn = { bg: restartBg, icon: restartIcon };
     this.restartBtnZone = restartZone;
@@ -1657,6 +1659,9 @@ export class GameScene extends Phaser.Scene {
       this.drawControlButton(this.pauseBtn, this.paused ? 0x3a5a28 : 0x3a2a18);
       this.pauseBtn.icon.setText(this.paused ? "\u25B6" : "\u23F8");
       this.drawControlButton(this.restartBtn, 0x3a2a18);
+      // In MP a unilateral restart would desync, so the same button leaves
+      // the match instead. Swap the glyph so the affordance is obvious.
+      this.restartBtn.icon.setText(this.mp ? "\u2715" : "\u21BB");
     }
     // Tutorial + difficulty live inside the pre-game modal. Hide them once
     // the match begins, and while the HOW TO PLAY modal is open on top.
@@ -2177,6 +2182,17 @@ export class GameScene extends Phaser.Scene {
     this.scene.restart({ skipMenu: true } satisfies GameSceneData);
   }
 
+  /** Restart button & 'R' shortcut entry point: in single-player this resets
+   *  the round; in multiplayer it leaves the match (a unilateral restart
+   *  would desync the lockstep state). */
+  private handleRestartTap(): void {
+    if (this.mp) {
+      this.leaveMatch();
+      return;
+    }
+    this.restart();
+  }
+
   private backToMenu(): void {
     // Fresh scene on the menu — re-reads difficulty and clears tutorial state.
     this.scene.restart({} satisfies GameSceneData);
@@ -2225,16 +2241,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   private lastHashTick = -1;
+  private lastHashValue = "";
   private readonly HASH_EVERY = 30;
 
   private updateMultiplayer(): void {
     if (!this.mp) return;
     // Periodic state-hash exchange for desync detection. Runs on the tick we
-    // just committed, after `advance` has returned.
+    // just committed, after `advance` has returned. We snapshot the hash
+    // alongside the tick so a remote message that arrives a few ticks later
+    // is compared against the same state we hashed, not a freshly-advanced one.
     const t = this.runner.tick - 1;
     if (t >= 0 && t !== this.lastHashTick && t % this.HASH_EVERY === 0) {
       this.lastHashTick = t;
-      this.sendMp({ t: "hash", tick: t, hash: hashState(this.state) });
+      this.lastHashValue = hashState(this.state);
+      this.sendMp({ t: "hash", tick: t, hash: this.lastHashValue });
+      this.checkHashes();
     }
     this.updateStallOverlay();
     this.updateRematchOverlay();
@@ -2258,63 +2279,67 @@ export class GameScene extends Phaser.Scene {
   }
 
   private pendingRemoteHashes: Map<number, string> = new Map();
-  private desyncReported = false;
 
   private handleRemoteHash(tick: number, hash: string): void {
-    if (this.desyncReported) return;
-    // We may get a remote hash before or after our own tick; stash and
-    // compare when the tick has been committed locally.
+    // Stash and compare once we've reached the same tick locally and have
+    // our own snapshot to compare against.
     this.pendingRemoteHashes.set(tick, hash);
     this.checkHashes();
   }
 
   private checkHashes(): void {
-    if (!this.mp || this.desyncReported) return;
-    // Scan all pending remote hashes for ticks we've already passed.
+    if (!this.mp) return;
+    // We can only validate ticks we've also hashed locally. Compare against
+    // the snapshot we recorded in `updateMultiplayer`, not a fresh hash of
+    // the current state — by the time the remote message arrives we may have
+    // advanced past `lastHashTick`, which would produce a false mismatch.
     for (const [tick, remote] of this.pendingRemoteHashes) {
-      if (tick >= this.runner.tick) continue; // we haven't committed this tick yet
-      // Replay hash locally by comparing to what we'd have computed at that
-      // tick — we don't store per-tick history, so the best we can do is
-      // compare the most recent committed hash via lastHashTick.
+      if (tick > this.lastHashTick) continue; // wait for our own snapshot
       if (tick === this.lastHashTick) {
-        const ours = hashState(this.state);
-        if (ours !== remote) {
+        if (this.lastHashValue && this.lastHashValue !== remote) {
+          // Log only — the desync warning has been intentionally hidden from
+          // players for now (it fires too often to be useful UI). Re-introduce
+          // a user-facing notice with a "Resync / new match" affordance once
+          // we've shaken out false positives.
           console.warn(
-            "[sporefall] MP desync at tick",
+            "[sporefall] MP hash mismatch at tick",
             tick,
             "local",
-            ours,
+            this.lastHashValue,
             "remote",
             remote,
           );
-          this.desyncReported = true;
-          this.showStallMessage(
-            "Game out of sync. Start a new match to continue.",
-          );
         }
-        this.pendingRemoteHashes.delete(tick);
-      } else if (tick < this.lastHashTick) {
-        // Stale — we've already moved past without comparing. Drop it.
-        this.pendingRemoteHashes.delete(tick);
       }
+      // Whether matched or stale, we're done with this entry.
+      this.pendingRemoteHashes.delete(tick);
     }
   }
 
+  private mpPeerLost = false;
+
   private handleMpDisconnect(): void {
     if (!this.mp) return;
-    this.showStallMessage("Opponent disconnected.");
+    this.mpPeerLost = true;
+    this.showStallMessage("Opponent disconnected.", { showLeave: true });
   }
 
   private updateStallOverlay(): void {
-    if (!this.mp || this.desyncReported) return;
+    if (!this.mp) return;
+    // Once the peer is gone we keep the disconnect notice up — there's no
+    // path back to gameplay, so don't flicker it back to "waiting".
+    if (this.mpPeerLost) return;
     if (this.runner.stalledFor > 1.5 && !this.state.winner) {
-      this.showStallMessage("Waiting for opponent…");
+      this.showStallMessage("Waiting for opponent…", { showLeave: true });
     } else {
       this.hideStallMessage();
     }
   }
 
-  private showStallMessage(text: string): void {
+  private showStallMessage(
+    text: string,
+    opts: { showLeave?: boolean } = {},
+  ): void {
     if (!this.mpStallOverlay) {
       this.mpStallOverlay = this.add
         .text(this.scale.width / 2, Math.round(this.scale.height * 0.22), text, {
@@ -2328,10 +2353,61 @@ export class GameScene extends Phaser.Scene {
         .setDepth(40);
     }
     this.mpStallOverlay.setText(text).setVisible(true);
+    if (opts.showLeave) {
+      this.showStallLeaveButton();
+    } else {
+      this.hideStallLeaveButton();
+    }
+  }
+
+  private mpStallLeaveBtn: Phaser.GameObjects.Text | null = null;
+
+  private showStallLeaveButton(): void {
+    if (!this.mpStallOverlay) return;
+    if (!this.mpStallLeaveBtn) {
+      this.mpStallLeaveBtn = this.add
+        .text(0, 0, "Leave match", {
+          fontSize: "18px",
+          color: "#f8ecc8",
+          backgroundColor: "rgba(58, 42, 24, 0.95)",
+          padding: { x: 18, y: 10 },
+          fontFamily: "system-ui, sans-serif",
+          fontStyle: "bold",
+        })
+        .setOrigin(0.5)
+        .setDepth(40)
+        .setInteractive({ useHandCursor: true });
+      this.mpStallLeaveBtn.on("pointerdown", () => this.leaveMatch());
+    }
+    const overlay = this.mpStallOverlay;
+    const y = overlay.y + overlay.displayHeight / 2 + 28;
+    this.mpStallLeaveBtn.setPosition(this.scale.width / 2, y).setVisible(true);
+  }
+
+  private hideStallLeaveButton(): void {
+    this.mpStallLeaveBtn?.setVisible(false);
   }
 
   private hideStallMessage(): void {
     this.mpStallOverlay?.setVisible(false);
+    this.hideStallLeaveButton();
+  }
+
+  /** Hard-exit the active multiplayer match: drop the transport, clear all
+   *  MP scene state, and bounce back to the menu so the player can host /
+   *  join a new match or play single-player. Safe to call from disconnect,
+   *  desync, or a player tap. */
+  private leaveMatch(): void {
+    if (this.mp) {
+      try {
+        this.mp.transport.close();
+      } catch {
+        /* already closed */
+      }
+    }
+    this.mp = null;
+    this.mpPeerLost = false;
+    this.backToMenu();
   }
 
   // ---------- rematch ----------
