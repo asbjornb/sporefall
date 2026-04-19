@@ -270,8 +270,13 @@ const startHost = (): void => {
   setMpError("");
   setMpStatus("Opening room…");
   if (mpShareNativeBtn) {
+    // Web Share works on desktop Chromium too, but the native sheet there is
+    // a clunky fallback (and "Copy share link" already covers the desktop
+    // path). Limit it to touch devices where the OS share sheet is the
+    // expected way to send a link via WhatsApp / iMessage / etc.
+    const isTouch = window.matchMedia("(pointer: coarse)").matches;
     const canShare = typeof navigator.share === "function";
-    mpShareNativeBtn.style.display = canShare ? "" : "none";
+    mpShareNativeBtn.style.display = canShare && isTouch ? "" : "none";
   }
   try {
     activeLobby = new Lobby({
@@ -357,6 +362,14 @@ mpShareNativeBtn?.addEventListener("click", async () => {
 
 // Show the MP entry point by default. (Later phases can hide it mid-match.)
 showMpBtn(true);
+
+// Bring the "vs Friend" button back whenever the scene returns to the menu —
+// e.g. after the player taps "Leave match" in the middle of a multiplayer
+// session — so they can immediately host or join a new one.
+window.addEventListener("sporefall:phase", (ev: Event) => {
+  const phase = (ev as CustomEvent<string>).detail;
+  if (phase === "menu") showMpBtn(true);
+});
 
 // If the URL carries a room code, jump straight into the join flow.
 const urlRoom = parseRoomFromUrl();
