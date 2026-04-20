@@ -48,10 +48,14 @@ export interface StructureConfig {
 /**
  * Upgrade tables. Tune each row freely; entries are independent.
  *
- * Convention: the first upgrade costs the same as the build cost.
- * Subsequent upgrades cost more and grant a bigger jump in both
- * pressure and effect, so investing in a single structure feels
- * progressively more meaningful (and committal).
+ * Convention: the first upgrade costs the same as the build cost, and each
+ * subsequent step doubles cost for a meatier commitment. Three steps total
+ * (max level 4) so each upgrade carries real weight.
+ *
+ * Each kind leans into its identity: Hyphae upgrades boost pressure + decay
+ * (it has no special effect); Rhizo / Fruiting / Decomposer upgrades boost
+ * their effect (dissolve / surge / income) plus some decay so upgraded
+ * specialists don't melt instantly.
  */
 export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   hyphae: {
@@ -63,13 +67,11 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     label: "Hyphal Mat",
     short: "Hyphae",
     color: 0x7a8a3a,
-    // build cost 25 → upgrades: 25, 35, 55, 80, 110 (total 305n to max)
+    // build cost 25 → upgrades: 25, 50, 100 (total 175n to max)
     upgrades: [
-      { cost: 25, time: 6, pressureMult: 2.0, effectMult: 1.8, decayBonus: 1 },
-      { cost: 35, time: 8, pressureMult: 2.7, effectMult: 2.4, decayBonus: 0 },
-      { cost: 55, time: 10, pressureMult: 3.5, effectMult: 3.1, decayBonus: 1 },
-      { cost: 80, time: 12, pressureMult: 4.5, effectMult: 3.9, decayBonus: 0 },
-      { cost: 110, time: 14, pressureMult: 5.5, effectMult: 4.7, decayBonus: 0 },
+      { cost: 25, time: 6, pressureMult: 1.8, effectMult: 1.0, decayBonus: 1 },
+      { cost: 50, time: 10, pressureMult: 3.0, effectMult: 1.0, decayBonus: 1 },
+      { cost: 100, time: 14, pressureMult: 4.5, effectMult: 1.0, decayBonus: 1 },
     ],
   },
   rhizomorph: {
@@ -81,13 +83,11 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     label: "Rhizomorph",
     short: "Rhizo",
     color: 0xbfc4c9,
-    // build cost 40 → upgrades: 40, 70, 110, 160, 220 (total 600n to max)
+    // build cost 40 → upgrades: 40, 80, 160 (total 280n to max)
     upgrades: [
-      { cost: 40, time: 8, pressureMult: 2.0, effectMult: 2.0, decayBonus: 1 },
-      { cost: 70, time: 10, pressureMult: 2.7, effectMult: 2.7, decayBonus: 0 },
-      { cost: 110, time: 12, pressureMult: 3.5, effectMult: 3.5, decayBonus: 1 },
-      { cost: 160, time: 14, pressureMult: 4.5, effectMult: 4.5, decayBonus: 0 },
-      { cost: 220, time: 16, pressureMult: 5.5, effectMult: 5.5, decayBonus: 0 },
+      { cost: 40, time: 8, pressureMult: 1.0, effectMult: 2.0, decayBonus: 0 },
+      { cost: 80, time: 12, pressureMult: 1.0, effectMult: 3.5, decayBonus: 1 },
+      { cost: 160, time: 16, pressureMult: 1.0, effectMult: 5.0, decayBonus: 1 },
     ],
   },
   fruiting: {
@@ -99,13 +99,11 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     label: "Fruiting Cluster",
     short: "Fruit",
     color: 0x8a4fa8,
-    // build cost 60 → upgrades: 60, 105, 165, 240, 330 (total 900n to max)
+    // build cost 60 → upgrades: 60, 120, 240 (total 420n to max)
     upgrades: [
-      { cost: 60, time: 10, pressureMult: 2.0, effectMult: 2.0, decayBonus: 1 },
-      { cost: 105, time: 12, pressureMult: 2.7, effectMult: 2.7, decayBonus: 0 },
-      { cost: 165, time: 14, pressureMult: 3.5, effectMult: 3.5, decayBonus: 1 },
-      { cost: 240, time: 16, pressureMult: 4.5, effectMult: 4.5, decayBonus: 0 },
-      { cost: 330, time: 18, pressureMult: 5.5, effectMult: 5.5, decayBonus: 0 },
+      { cost: 60, time: 10, pressureMult: 1.0, effectMult: 2.0, decayBonus: 0 },
+      { cost: 120, time: 14, pressureMult: 1.0, effectMult: 3.5, decayBonus: 1 },
+      { cost: 240, time: 18, pressureMult: 1.0, effectMult: 5.0, decayBonus: 1 },
     ],
   },
   decomposer: {
@@ -118,13 +116,11 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     short: "Decom",
     color: 0xc08040,
     // Decomposer has no pressure, so pressureMult is unused — kept for symmetry.
-    // build cost 40 → upgrades: 40, 70, 110, 160, 220 (total 600n to max)
+    // build cost 40 → upgrades: 40, 80, 160 (total 280n to max)
     upgrades: [
-      { cost: 40, time: 8, pressureMult: 1.0, effectMult: 2.0, decayBonus: 1 },
-      { cost: 70, time: 10, pressureMult: 1.0, effectMult: 2.7, decayBonus: 0 },
-      { cost: 110, time: 12, pressureMult: 1.0, effectMult: 3.5, decayBonus: 1 },
-      { cost: 160, time: 14, pressureMult: 1.0, effectMult: 4.5, decayBonus: 0 },
-      { cost: 220, time: 16, pressureMult: 1.0, effectMult: 5.5, decayBonus: 0 },
+      { cost: 40, time: 8, pressureMult: 1.0, effectMult: 2.0, decayBonus: 0 },
+      { cost: 80, time: 12, pressureMult: 1.0, effectMult: 3.5, decayBonus: 1 },
+      { cost: 160, time: 16, pressureMult: 1.0, effectMult: 5.0, decayBonus: 1 },
     ],
   },
 };
