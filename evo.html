@@ -133,6 +133,10 @@
         flex-shrink: 0;
         text-align: right;
       }
+      .score.dim {
+        color: var(--muted);
+        width: 40px;
+      }
       .id {
         color: var(--muted);
         width: 60px;
@@ -142,6 +146,55 @@
         color: var(--text);
         flex: 1;
         word-break: break-word;
+      }
+      .tier-header {
+        margin-top: 6px;
+        padding: 4px 6px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        letter-spacing: 0.05em;
+      }
+      .tier-header:first-child {
+        margin-top: 0;
+      }
+      .tier-label {
+        font-weight: 700;
+        margin-right: 6px;
+      }
+      .tier-caption {
+        color: var(--muted);
+        font-size: 0.75rem;
+      }
+      .tier-1 {
+        background: rgba(217, 178, 74, 0.18);
+        border-left: 3px solid var(--accent);
+      }
+      .tier-2 {
+        background: rgba(122, 138, 58, 0.15);
+        border-left: 3px solid var(--accent2);
+      }
+      .tier-3 {
+        background: rgba(232, 215, 182, 0.05);
+        border-left: 3px solid rgba(232, 215, 182, 0.25);
+      }
+      .matrix-table {
+        border-collapse: collapse;
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 0.7rem;
+      }
+      .matrix-table th,
+      .matrix-table td {
+        padding: 3px 5px;
+        text-align: center;
+        border: 1px solid rgba(232, 215, 182, 0.08);
+        min-width: 34px;
+      }
+      .matrix-table th {
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .matrix-table td {
+        color: var(--text);
       }
       #chart {
         width: 100%;
@@ -230,9 +283,13 @@
       </div>
       <div>
         <div class="panel">
-          <h2>Hall of Fame</h2>
-          <div id="hof"></div>
+          <h2>Tier list (Pareto HoF + Nash mixture)</h2>
+          <div id="tiers"></div>
         </div>
+        <section class="panel" style="overflow-x: auto">
+          <h2>Matchup matrix (row vs. col, %)</h2>
+          <div id="matrix"></div>
+        </section>
         <section class="panel">
           <h2>Build-kind usage (top half, score-weighted)</h2>
           <div id="genes-hist"></div>
@@ -241,6 +298,8 @@
           <strong>Legend:</strong> <code>+Hy</code> = build Hyphae.
           <code>^Fr2</code> = upgrade the 2nd Fruiting. <code>tail</code> = what
           to do after the gene list is exhausted (build X, upgrade-priority Y).
+          Tier 1 = appears in Nash-optimal mix. Tier 2 = not in mix but wins
+          vs. it. Tier 3 = dominated / fringe.
         </section>
       </div>
     </div>

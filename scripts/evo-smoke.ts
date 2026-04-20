@@ -63,4 +63,40 @@ console.log("\nmirror (should be ~50/50 over enough games):");
 const p2 = runPair(hyphaeRush, hyphaeRush);
 console.log(`  L=${p2.aScore} R=${p2.bScore}`);
 
+// Sanity-check Nash + tiering on a canonical rock-paper-scissors matrix —
+// the mixture should converge to ~1/3 each, and all three should end up Tier 1.
+import { assignTiers, computeNashMixture } from "../src/evo/nash";
+
+const rps = [
+  [0.5, 1.0, 0.0],
+  [0.0, 0.5, 1.0],
+  [1.0, 0.0, 0.5],
+];
+const nash = computeNashMixture(rps);
+const tiers = assignTiers(rps, nash);
+console.log("\nRPS Nash mix:", nash.map((x) => x.toFixed(3)).join(", "));
+console.log("Tiers:");
+for (const t of tiers) {
+  console.log(
+    `  row ${t.index}: tier=${t.tier} nash=${(t.nashWeight * 100).toFixed(1)}% vs-nash=${(t.scoreVsNash * 100).toFixed(1)}%`,
+  );
+}
+
+// Dominance case: row 0 strictly beats everyone else. Nash should put all weight on row 0,
+// and rows 1 & 2 should be Tier 3.
+const dom = [
+  [0.5, 0.9, 0.8],
+  [0.1, 0.5, 0.6],
+  [0.2, 0.4, 0.5],
+];
+const domNash = computeNashMixture(dom);
+const domTiers = assignTiers(dom, domNash);
+console.log("\nDominance Nash mix:", domNash.map((x) => x.toFixed(3)).join(", "));
+console.log("Tiers:");
+for (const t of domTiers) {
+  console.log(
+    `  row ${t.index}: tier=${t.tier} nash=${(t.nashWeight * 100).toFixed(1)}%`,
+  );
+}
+
 console.log("\nOK");

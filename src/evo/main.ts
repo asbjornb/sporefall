@@ -3,6 +3,7 @@ import {
   GA,
   type Evaluated,
   type GenerationResult,
+  type TierEntry,
 } from "./ga";
 import { describeGenotype } from "./genotype";
 import { WorkerPool } from "./pool";
@@ -28,10 +29,11 @@ const els = {
   gen: qs<HTMLSpanElement>("#gen-num"),
   workers: qs<HTMLSpanElement>("#worker-count"),
   leaderboard: qs<HTMLDivElement>("#leaderboard"),
-  hof: qs<HTMLDivElement>("#hof"),
+  tiers: qs<HTMLDivElement>("#tiers"),
   log: qs<HTMLDivElement>("#log"),
   chart: qs<HTMLCanvasElement>("#chart"),
   genesHist: qs<HTMLDivElement>("#genes-hist"),
+  matrix: qs<HTMLDivElement>("#matrix"),
 };
 
 els.workers.textContent = String(workerCount);
@@ -40,13 +42,14 @@ interface HistoryPoint {
   generation: number;
   bestScore: number;
   meanScore: number;
+  tier1Count: number;
 }
 
 let pool: WorkerPool | null = null;
 let ga: GA | null = null;
 let running = false;
 let history: HistoryPoint[] = [];
-let allResults: GenerationResult[] = [];
+let lastResult: GenerationResult | null = null;
 
 function ensurePool(): WorkerPool {
   if (!pool) pool = new WorkerPool(workerCount);
@@ -58,7 +61,6 @@ function log(line: string): void {
   const p = document.createElement("div");
   p.textContent = `[${now}] ${line}`;
   els.log.prepend(p);
-  // Cap log length so memory doesn't creep on long runs.
   while (els.log.children.length > 100) els.log.lastChild?.remove();
 }
 
@@ -86,23 +88,86 @@ function renderLeaderboard(evaluated: Evaluated[]): void {
   }
 }
 
-function renderHof(hof: readonly Evaluated[]): void {
-  els.hof.innerHTML = "";
-  for (const e of hof) {
+function renderTiers(tiers: TierEntry[]): void {
+  els.tiers.innerHTML = "";
+  let currentTier = -1;
+  for (const t of tiers) {
+    if (t.tier !== currentTier) {
+      currentTier = t.tier;
+      const header = document.createElement("div");
+      header.className = `tier-header tier-${t.tier}`;
+      const label = document.createElement("span");
+      label.className = "tier-label";
+      label.textContent = `Tier ${t.tier}`;
+      const caption = document.createElement("span");
+      caption.className = "tier-caption";
+      caption.textContent =
+        t.tier === 1
+          ? "— core meta (Nash support)"
+          : t.tier === 2
+            ? "— viable counter (wins vs. meta)"
+            : "— fringe / dominated";
+      header.append(label, caption);
+      els.tiers.appendChild(header);
+    }
     const row = document.createElement("div");
     row.className = "row";
-    const score = document.createElement("span");
-    score.className = "score";
-    score.textContent = (e.score * 100).toFixed(1) + "%";
+    const weight = document.createElement("span");
+    weight.className = "score";
+    weight.textContent = (t.nashWeight * 100).toFixed(1) + "%";
+    const vsn = document.createElement("span");
+    vsn.className = "score dim";
+    vsn.textContent = (t.scoreVsNash * 100).toFixed(0) + "%";
     const id = document.createElement("span");
     id.className = "id";
-    id.textContent = e.genotype.id;
+    id.textContent = t.genotype.id;
     const body = document.createElement("span");
     body.className = "body";
-    body.textContent = describeGenotype(e.genotype);
-    row.append(score, id, body);
-    els.hof.appendChild(row);
+    body.textContent = describeGenotype(t.genotype);
+    row.append(weight, vsn, id, body);
+    els.tiers.appendChild(row);
   }
+}
+
+function renderMatrix(result: GenerationResult): void {
+  const M = result.matchupMatrix;
+  const hof = result.hallOfFame;
+  els.matrix.innerHTML = "";
+  if (M.length === 0) return;
+  const table = document.createElement("table");
+  table.className = "matrix-table";
+  const headRow = document.createElement("tr");
+  headRow.appendChild(document.createElement("th"));
+  for (const g of hof) {
+    const th = document.createElement("th");
+    th.textContent = g.id;
+    headRow.appendChild(th);
+  }
+  table.appendChild(headRow);
+  for (let i = 0; i < M.length; i++) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = hof[i].id;
+    tr.appendChild(th);
+    for (let j = 0; j < M[i].length; j++) {
+      const td = document.createElement("td");
+      const v = M[i][j];
+      td.textContent = i === j ? "–" : (v * 100).toFixed(0);
+      // Green tint for wins (>50%), red for losses. Opacity = confidence of advantage.
+      if (i !== j) {
+        const bias = (v - 0.5) * 2; // -1..1
+        const a = Math.min(0.8, Math.abs(bias));
+        const color =
+          bias >= 0
+            ? `rgba(122, 138, 58, ${a.toFixed(2)})`
+            : `rgba(200, 90, 60, ${a.toFixed(2)})`;
+        td.style.background = color;
+      }
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+  els.matrix.appendChild(table);
 }
 
 function renderChart(): void {
@@ -160,8 +225,6 @@ function renderChart(): void {
 }
 
 function renderGenesHist(evaluated: Evaluated[]): void {
-  // Distribution of build-kind usage in the top half of the population,
-  // weighted by score. Gives a feel for which structures are being favored.
   els.genesHist.innerHTML = "";
   const counts: Record<string, number> = {
     hyphae: 0,
@@ -209,19 +272,24 @@ function onGenerationDone(result: GenerationResult): void {
   const mean =
     result.evaluated.reduce((s, e) => s + e.score, 0) /
     Math.max(1, result.evaluated.length);
-  history.push({ generation: result.generation, bestScore: best, meanScore: mean });
-  allResults.push(result);
-  // Cap retained full results so memory doesn't grow indefinitely; the history
-  // array holds just the summary points for the chart.
-  if (allResults.length > 10) allResults.shift();
+  const tier1Count = result.tiers.filter((t) => t.tier === 1).length;
+  history.push({
+    generation: result.generation,
+    bestScore: best,
+    meanScore: mean,
+    tier1Count,
+  });
+  lastResult = result;
 
   els.gen.textContent = String(result.generation);
   renderLeaderboard(result.evaluated);
-  renderHof(result.hallOfFame);
+  renderTiers(result.tiers);
+  renderMatrix(result);
   renderChart();
   renderGenesHist(result.evaluated);
   log(
-    `gen ${result.generation}: best=${(best * 100).toFixed(1)}% mean=${(mean * 100).toFixed(1)}% (${result.pairsPlayed} pairs)`,
+    `gen ${result.generation}: best=${(best * 100).toFixed(1)}% mean=${(mean * 100).toFixed(1)}% | ` +
+      `HoF=${result.hallOfFame.length} Tier1=${tier1Count} | ${result.pairsPlayed} played, ${result.pairsCached} cached`,
   );
 }
 
@@ -230,7 +298,7 @@ async function runLoop(): Promise<void> {
   while (running) {
     try {
       const result = await ga.runGeneration((done, total) => {
-        els.progress.max = total;
+        els.progress.max = Math.max(1, total);
         els.progress.value = done;
         els.status.textContent = `gen ${ga!.generation} — ${done}/${total} pairs`;
       });
@@ -251,7 +319,8 @@ function start(): void {
   if (!ga) {
     ga = new GA(DEFAULT_CONFIG, ensurePool());
     log(
-      `init: pop=${DEFAULT_CONFIG.populationSize} elites=${DEFAULT_CONFIG.elites} hof=${DEFAULT_CONFIG.hallOfFameSize} workers=${workerCount}`,
+      `init: pop=${DEFAULT_CONFIG.populationSize} elites=${DEFAULT_CONFIG.elites} ` +
+        `hof=${DEFAULT_CONFIG.hallOfFameSize} workers=${workerCount}`,
     );
   }
   running = true;
@@ -273,10 +342,11 @@ function reset(): void {
   }
   ga = null;
   history = [];
-  allResults = [];
+  lastResult = null;
   els.gen.textContent = "0";
   els.leaderboard.innerHTML = "";
-  els.hof.innerHTML = "";
+  els.tiers.innerHTML = "";
+  els.matrix.innerHTML = "";
   els.genesHist.innerHTML = "";
   els.log.innerHTML = "";
   renderChart();
@@ -289,8 +359,10 @@ function download(): void {
     config: DEFAULT_CONFIG,
     workerCount,
     history,
-    recentGenerations: allResults,
-    hallOfFame: ga?.getHallOfFame() ?? [],
+    lastResult,
+    // Full cumulative matchup matrix — useful for offline post-hoc analysis
+    // (Elo, alternate Nash solvers, clustering etc.).
+    matchups: ga?.exportMatchups() ?? [],
     exportedAt: new Date().toISOString(),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {
