@@ -51,6 +51,28 @@
       #fullscreen-btn:hover {
         background: rgba(27, 18, 10, 0.8);
       }
+      #mute-btn {
+        position: fixed;
+        top: 8px;
+        right: 52px;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(27, 18, 10, 0.55);
+        color: #e8d7b6;
+        border: 1px solid rgba(232, 215, 182, 0.35);
+        border-radius: 6px;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+        z-index: 20;
+      }
+      #mute-btn:hover {
+        background: rgba(27, 18, 10, 0.8);
+      }
       #mp-btn {
         position: fixed;
         top: 8px;
@@ -244,6 +266,7 @@
   </head>
   <body>
     <div id="game"></div>
+    <button id="mute-btn" type="button" aria-label="Toggle sound" title="Toggle sound">🔊</button>
     <button id="fullscreen-btn" type="button" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
     <button id="mp-btn" type="button" aria-label="Multiplayer">vs Friend</button>
     <button id="spread-btn" type="button">Spread</button>

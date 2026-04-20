@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { SimpleAI, type AIDifficulty } from "../game/ai";
+import { type AudioManager, getAudio } from "../game/audio";
 import { type Command } from "../game/commands";
 import {
   DISABLE_DURATION,
@@ -21,7 +22,13 @@ import {
   pressureOf,
 } from "../game/sim";
 import { TutorialDirector } from "../game/tutorial";
-import type { GameState, Side, Structure, StructureKind } from "../game/types";
+import type {
+  GameState,
+  Side,
+  Structure,
+  StructureKind,
+  StructureStatus,
+} from "../game/types";
 import type { NetMessage, Transport } from "../net/Transport";
 
 export interface MpSceneConfig {
@@ -408,6 +415,23 @@ export class GameScene extends Phaser.Scene {
   private restartBtnZone!: Phaser.GameObjects.Zone;
   private bgZone!: Phaser.GameObjects.Zone;
   private layout!: Layout;
+  private audio!: AudioManager;
+  /** Per-side map of structure id -> last-seen status, used to detect
+   *  growing→active, mutating→active, and *→disabled transitions for SFX. */
+  private prevStatuses: Record<Side, Map<number, StructureStatus>> = {
+    left: new Map(),
+    right: new Map(),
+  };
+  /** Per-side map of structure id -> last-seen surgeTimer, so we can fire
+   *  the surge whoosh on the 0→>0 edge. */
+  private prevSurge: Record<Side, Map<number, number>> = {
+    left: new Map(),
+    right: new Map(),
+  };
+  /** Floor of the last-seen countdown, for per-second tick / GO cues. */
+  private prevCountdownFloor = -1;
+  /** Last-seen winner so we fire win/lose stings exactly once. */
+  private prevWinner: Side | null = null;
 
   constructor() {
     super("game");
@@ -436,6 +460,13 @@ export class GameScene extends Phaser.Scene {
     // Multiplayer also goes straight to playing once the lobby handshake is done.
     this.phase =
       data?.tutorial || data?.skipMenu || this.mp ? "playing" : "menu";
+    // Reset transition snapshots on every (re)init so a freshly-built state
+    // doesn't fire phantom "structure completed" SFX on the first tick.
+    this.prevStatuses = { left: new Map(), right: new Map() };
+    this.prevSurge = { left: new Map(), right: new Map() };
+    this.prevCountdownFloor = -1;
+    this.prevWinner = null;
+    this.audio = getAudio();
   }
 
   create(): void {
@@ -537,9 +568,39 @@ export class GameScene extends Phaser.Scene {
     // In MP we route through `leaveMatch` so the transport gets closed; the
     // rematch overlay handles the in-game post-win flow on its own.
     this.input.on("pointerdown", () => {
+      // Browsers gate audio behind a real user gesture — piggyback on any
+      // pointer input inside the canvas to unlock the context.
+      this.audio.resume();
       if (this.state.winner && !this.mp) this.backToMenu();
       if (this.tutorial.active) this.tutorial.registerTap();
     });
+
+    // Seed the transition snapshot so we don't fire SFX for state that
+    // already existed when the scene started (e.g. during a restart).
+    this.captureAudioSnapshot();
+    this.prevWinner = this.state.winner;
+    this.prevCountdownFloor = Math.ceil(this.state.countdown);
+
+    // If we're starting already in "playing" (tutorial / mp / skipMenu),
+    // kick the ambient bed immediately; `startPlay()` handles the menu path.
+    if (this.phase === "playing") {
+      this.audio.resume();
+      this.audio.startAmbient();
+    }
+  }
+
+  private captureAudioSnapshot(): void {
+    for (const side of ["left", "right"] as Side[]) {
+      const statuses = new Map<number, StructureStatus>();
+      const surges = new Map<number, number>();
+      for (const s of this.state[side].slots) {
+        if (!s) continue;
+        statuses.set(s.id, s.status);
+        if (s.kind === "fruiting") surges.set(s.id, s.surgeTimer ?? 0);
+      }
+      this.prevStatuses[side] = statuses;
+      this.prevSurge[side] = surges;
+    }
   }
 
   private onResize(gameSize: Phaser.Structs.Size): void {
@@ -689,7 +750,82 @@ export class GameScene extends Phaser.Scene {
         this.slotShake[i] = Math.max(0, this.slotShake[i] - dt);
       }
     }
+    this.emitAudioEvents();
     this.render();
+  }
+
+  /**
+   * Observe sim-state transitions (post-tick) and fire the matching SFX.
+   * We snapshot rather than hook into `sim.ts` because the sim must stay pure
+   * for deterministic lockstep; audio is a local side-effect.
+   */
+  private emitAudioEvents(): void {
+    // Countdown ticks + GO sting.
+    if (this.phase === "playing" && !this.state.winner) {
+      const cd = this.state.countdown;
+      if (cd > 0) {
+        const floor = Math.ceil(cd);
+        if (this.prevCountdownFloor !== -1 && floor < this.prevCountdownFloor) {
+          this.audio.playCountdownTick();
+        }
+        this.prevCountdownFloor = floor;
+      } else if (this.prevCountdownFloor > 0) {
+        this.audio.playCountdownGo();
+        this.prevCountdownFloor = 0;
+      }
+    }
+
+    // Structure-level transitions for both sides.
+    for (const side of ["left", "right"] as Side[]) {
+      const prev = this.prevStatuses[side];
+      const prevSurge = this.prevSurge[side];
+      const nextStatuses = new Map<number, StructureStatus>();
+      const nextSurge = new Map<number, number>();
+      const isOurs = side === this.ourSide;
+
+      for (const s of this.state[side].slots) {
+        if (!s) continue;
+        nextStatuses.set(s.id, s.status);
+        const prevStatus = prev.get(s.id);
+
+        if (prevStatus && prevStatus !== s.status) {
+          if (prevStatus === "growing" && s.status === "active" && isOurs) {
+            this.audio.playBuildComplete();
+          } else if (
+            prevStatus === "mutating" &&
+            s.status === "active" &&
+            isOurs
+          ) {
+            this.audio.playMutateComplete();
+          } else if (s.status === "disabled") {
+            this.audio.playDisable();
+          }
+        }
+
+        if (s.kind === "fruiting") {
+          const curr = s.surgeTimer ?? 0;
+          const previous = prevSurge.get(s.id) ?? 0;
+          if (previous <= 0 && curr > 0) {
+            this.audio.playSurge();
+          }
+          nextSurge.set(s.id, curr);
+        }
+      }
+      this.prevStatuses[side] = nextStatuses;
+      this.prevSurge[side] = nextSurge;
+    }
+
+    // Win / lose sting fires once on the winner transition.
+    if (!this.prevWinner && this.state.winner) {
+      if (this.state.winner === this.ourSide) {
+        this.audio.playWin();
+      } else {
+        this.audio.playLose();
+      }
+      // The match is over — let the ambient bed breathe out.
+      this.audio.stopAmbient();
+    }
+    this.prevWinner = this.state.winner;
   }
 
   // ---------- rendering ----------
@@ -1560,6 +1696,13 @@ export class GameScene extends Phaser.Scene {
 
   private onBuildTap(kind: StructureKind): void {
     if (this.state.winner || this.paused) return;
+    // Play the placement "tok" immediately (before the command is queued in
+    // MP) — gives the player instant tactile feedback even when the lockstep
+    // input-delay means the sim-level placement is a few ticks away.
+    if (canBuild(this.state, this.ourSide, kind)) {
+      this.audio.resume();
+      this.audio.playBuildStart();
+    }
     this.runner.submitLocalCommand({
       kind: "build",
       side: this.ourSide,
@@ -1863,11 +2006,14 @@ export class GameScene extends Phaser.Scene {
     // Countdown starts fresh from the config default now that the player has tapped.
     this.state.countdown = START_COUNTDOWN;
     this.state.time = 0;
+    this.prevCountdownFloor = Math.ceil(this.state.countdown);
     // Re-position anything that depends on per-phase visibility.
     this.applyLayout();
     // Fires synchronously inside the Spread pointer handler so main.ts can
     // kick off fullscreen+landscape as part of the same user gesture.
     emitPhase(this.phase);
+    this.audio.resume();
+    this.audio.startAmbient();
   }
 
   // ---------- UI: tutorial summary overlay (toggled via the "?" button) ----------

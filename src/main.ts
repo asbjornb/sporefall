@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { getAudio } from "./game/audio";
 import { Lobby, type LobbyStatus } from "./net/Lobby";
 import {
   generateRoomCode,
@@ -135,6 +136,30 @@ window.addEventListener("orientationchange", applyFsBtnVisibility);
 screen.orientation?.addEventListener?.("change", applyFsBtnVisibility);
 
 applyFsBtnVisibility();
+
+// ---------- Mute toggle ----------
+const muteBtn = document.getElementById("mute-btn") as HTMLButtonElement | null;
+const audio = getAudio();
+const applyMuteLabel = (): void => {
+  if (!muteBtn) return;
+  muteBtn.textContent = audio.isMuted() ? "🔇" : "🔊";
+  muteBtn.setAttribute(
+    "aria-label",
+    audio.isMuted() ? "Unmute sound" : "Mute sound",
+  );
+};
+applyMuteLabel();
+muteBtn?.addEventListener("click", () => {
+  audio.resume();
+  audio.toggleMuted();
+  applyMuteLabel();
+});
+window.addEventListener("keydown", (e: KeyboardEvent) => {
+  if (e.key === "m" || e.key === "M") {
+    audio.toggleMuted();
+    applyMuteLabel();
+  }
+});
 
 // The Spread CTA is a native button rather than a Phaser GameObject so the
 // fullscreen / orientation-lock request fires inside the real user gesture.
