@@ -85,8 +85,8 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     color: 0xbfc4c9,
     // build cost 40 → upgrades: 40, 80, 160 (total 280n to max)
     upgrades: [
-      { cost: 40, time: 8, pressureMult: 1.0, effectMult: 2.0, decayBonus: 0 },
-      { cost: 80, time: 12, pressureMult: 1.0, effectMult: 3.5, decayBonus: 1 },
+      { cost: 40, time: 8, pressureMult: 1.0, effectMult: 2.5, decayBonus: 0 },
+      { cost: 80, time: 12, pressureMult: 1.0, effectMult: 3.75, decayBonus: 1 },
       { cost: 160, time: 16, pressureMult: 1.0, effectMult: 5.0, decayBonus: 1 },
     ],
   },
