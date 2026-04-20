@@ -172,12 +172,20 @@ export class GA {
     const evaluated = this.scorePopulation(pop);
 
     // Update HoF via Pareto front over (current HoF + top candidates of this gen).
-    const candidates: Genotype[] = [
+    // Dedup by canonical ID so behaviorally-identical genotypes don't appear
+    // twice and distort Nash weight.
+    const seen = new Set<string>();
+    const candidates: Genotype[] = [];
+    for (const g of [
       ...this.hof,
       ...evaluated
         .slice(0, Math.min(this.config.hofCandidatesPerGen, evaluated.length))
         .map((e) => cloneGenotype(e.genotype)),
-    ];
+    ]) {
+      if (seen.has(g.id)) continue;
+      seen.add(g.id);
+      candidates.push(g);
+    }
     // Fill in any missing pairs among candidates before the Pareto check —
     // dominance needs every pairwise comparison.
     const fillAdded = await this.fillMissingPairs(candidates);
