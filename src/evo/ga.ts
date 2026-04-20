@@ -23,12 +23,12 @@ export interface EvoConfig {
 }
 
 export const DEFAULT_CONFIG: EvoConfig = {
-  populationSize: 24,
-  elites: 4,
-  hallOfFameSize: 10,
-  tournamentSize: 3,
-  maxGenes: 24,
-  hofCandidatesPerGen: 3,
+  populationSize: 64,
+  elites: 8,
+  hallOfFameSize: 16,
+  tournamentSize: 4,
+  maxGenes: 36,
+  hofCandidatesPerGen: 8,
 };
 
 export interface Evaluated {

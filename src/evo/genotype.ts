@@ -13,15 +13,12 @@ export type Gene =
  * total builds never exceed SLOT_COUNT. Runtime skipping in the agent is
  * still a safety net (e.g. max-level reached) but should rarely trigger.
  *
- * Once `genes` is exhausted the `tail*` fields describe steady-state: build
- * `tailBuild` when a slot is free, otherwise upgrade the lowest-level
- * `tailUpgrade`.
+ * Once `genes` is exhausted, the agent idles. This keeps selection pressure on
+ * explicit build plans instead of a hard-coded infinite "tail" policy.
  */
 export interface Genotype {
   id: string;
   genes: Gene[];
-  tailBuild: StructureKind;
-  tailUpgrade: StructureKind;
 }
 
 export const ALL_KINDS: StructureKind[] = [
@@ -145,8 +142,6 @@ export function randomGenotype(
   return {
     id: randomId(rng),
     genes,
-    tailBuild: pickKind(rng),
-    tailUpgrade: pickKind(rng),
   };
 }
 
@@ -166,8 +161,6 @@ export function mutate(
 ): Genotype {
   const maxGenes = opts.maxGenes ?? 24;
   let genes = parent.genes.slice();
-  let tailBuild = parent.tailBuild;
-  let tailUpgrade = parent.tailUpgrade;
 
   const roll = rng();
   if (roll < 0.3 && genes.length > 0) {
@@ -183,10 +176,14 @@ export function mutate(
   } else if (roll < 0.8 && genes.length > 1) {
     const i = randInt(rng, genes.length - 1);
     [genes[i], genes[i + 1]] = [genes[i + 1], genes[i]];
-  } else if (roll < 0.9) {
-    tailBuild = pickKind(rng);
   } else {
-    tailUpgrade = pickKind(rng);
+    // Fresh random gene insertion (when room permits) helps maintain
+    // exploration now that there is no tail policy to mutate.
+    if (genes.length < maxGenes) {
+      const at = randInt(rng, genes.length + 1);
+      const { counts, totalBuilds } = countsUpTo(genes, at);
+      genes.splice(at, 0, genReachable(rng, counts, totalBuilds));
+    }
   }
 
   genes = sanitize(genes);
@@ -194,8 +191,6 @@ export function mutate(
   return {
     id: randomId(rng),
     genes,
-    tailBuild,
-    tailUpgrade,
   };
 }
 
@@ -209,12 +204,9 @@ export function crossover(
   const cutB = randInt(rng, b.genes.length + 1);
   const joined = a.genes.slice(0, cutA).concat(b.genes.slice(cutB));
   const genes = sanitize(joined);
-  const useA = rng() < 0.5;
   return {
     id: randomId(rng),
     genes,
-    tailBuild: useA ? a.tailBuild : b.tailBuild,
-    tailUpgrade: rng() < 0.5 ? a.tailUpgrade : b.tailUpgrade,
   };
 }
 
@@ -233,7 +225,7 @@ export function describeGene(g: Gene): string {
 
 export function describeGenotype(g: Genotype): string {
   const body = g.genes.map(describeGene).join(" ");
-  return `${body} | tail +${KIND_SHORT[g.tailBuild]} ^${KIND_SHORT[g.tailUpgrade]}`;
+  return body.length > 0 ? body : "(empty)";
 }
 
 /** Exported for the agent: used when deciding if an upgrade target is maxed. */
