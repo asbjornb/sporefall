@@ -59,7 +59,7 @@ export interface StructureConfig {
  */
 export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   hyphae: {
-    cost: 25,
+    cost: 27,
     buildTime: 5,
     basePressure: 3,
     incomeBonus: 0,
@@ -67,7 +67,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     label: "Hyphal Mat",
     short: "Hyphae",
     color: 0x7a8a3a,
-    // build cost 25 → upgrades: 25, 50, 100 (total 175n to max)
+    // build cost 27 → upgrades: 25, 50, 100 (total 175n to max)
     upgrades: [
       { cost: 25, time: 6, pressureMult: 1.8, effectMult: 1.0, decayBonus: 1 },
       { cost: 50, time: 10, pressureMult: 3.0, effectMult: 1.0, decayBonus: 1 },
