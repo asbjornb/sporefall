@@ -53,15 +53,15 @@ export interface StructureConfig {
  */
 export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   hyphae: {
-    cost: 20,
+    cost: 25,
     buildTime: 4,
     basePressure: 3,
     incomeBonus: 0,
-    disableDecay: 3,
+    disableDecay: 4,
     label: "Hyphal Mat",
     short: "Hyphae",
     color: 0x7a8a3a,
-    // build cost 20 → upgrades: 20, 35, 55, 80, 110 (total 300n to max)
+    // build cost 25 → upgrades: 20, 35, 55, 80, 110 (total 300n to max)
     upgrades: [
       { cost: 20, time: 6, pressureMult: 1.5, effectMult: 1.4 },
       { cost: 35, time: 8, pressureMult: 2.1, effectMult: 1.9 },
@@ -73,7 +73,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   rhizomorph: {
     cost: 40,
     buildTime: 6,
-    basePressure: 4,
+    basePressure: 3,
     incomeBonus: 0,
     disableDecay: 5,
     label: "Rhizomorph",
@@ -108,7 +108,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   },
   decomposer: {
     cost: 40,
-    buildTime: 16,
+    buildTime: 12,
     basePressure: 0,
     incomeBonus: 1.5,
     disableDecay: 4,
@@ -166,7 +166,7 @@ export function nextUpgradeTime(
 export const SCLEROTIUM_DAMAGE = 6;
 
 /** How fast the front moves in normalized-units/second per unit of net pressure. */
-export const FRONT_SPEED = 0.008;
+export const FRONT_SPEED = 0.006;
 
 // ---------- RPS / disable system ----------
 
