@@ -30,20 +30,6 @@ function findNthOfKind(
   return null;
 }
 
-function lowestLevelOfKind(
-  colony: ColonyState,
-  kind: StructureKind,
-): Match | null {
-  let best: Match | null = null;
-  for (let i = 0; i < colony.slots.length; i++) {
-    const s = colony.slots[i];
-    if (!s || s.kind !== kind) continue;
-    if (isMaxed(s.level)) continue;
-    if (!best || s.level < best.structure.level) best = { structure: s, idx: i };
-  }
-  return best;
-}
-
 type Decision = Command | "wait" | "skip";
 
 /**
@@ -68,7 +54,7 @@ export class GenotypeAgent {
     // One command per update() call matches the premise "build as soon as
     // affordable": the match runner calls update() every tick (30 Hz).
     for (let guard = 0; guard < this.genotype.genes.length + 2; guard++) {
-      const gene = this.currentGene(colony);
+      const gene = this.currentGene();
       if (!gene) return null;
 
       const decision = this.evaluate(state, colony, gene);
@@ -78,7 +64,7 @@ export class GenotypeAgent {
           this.step++;
           continue;
         }
-        // Tail skip — nothing useful to do this tick.
+        // Nothing useful to do this tick.
         return null;
       }
       if (this.step < this.genotype.genes.length) this.step++;
@@ -87,31 +73,11 @@ export class GenotypeAgent {
     return null;
   }
 
-  private currentGene(colony: ColonyState): Gene | null {
+  private currentGene(): Gene | null {
     if (this.step < this.genotype.genes.length) {
       return this.genotype.genes[this.step];
     }
-    // Tail: prefer building tailBuild when a slot is free; otherwise upgrade
-    // the lowest-level tailUpgrade we own.
-    const hasEmpty = colony.slots.some((s) => s === null);
-    if (hasEmpty) {
-      return { kind: "build", structure: this.genotype.tailBuild };
-    }
-    const target = lowestLevelOfKind(colony, this.genotype.tailUpgrade);
-    if (target) {
-      // Use slot-index-as-ordinal-lookup indirectly by constructing an upgrade
-      // gene. evaluate() will re-find by (kind, ordinal) — compute the ordinal.
-      let ordinal = 0;
-      for (let i = 0; i <= target.idx; i++) {
-        const s = colony.slots[i];
-        if (s && s.kind === this.genotype.tailUpgrade) ordinal++;
-      }
-      return {
-        kind: "upgrade",
-        target: this.genotype.tailUpgrade,
-        ordinal,
-      };
-    }
+    // No implicit tail policy: once genes are consumed, idle.
     return null;
   }
 

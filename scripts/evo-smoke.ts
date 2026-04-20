@@ -17,8 +17,6 @@ const hyphaeRush: Genotype = {
     { kind: "build", structure: "hyphae" },
     { kind: "upgrade", target: "hyphae", ordinal: 2 },
   ],
-  tailBuild: "hyphae",
-  tailUpgrade: "hyphae",
 };
 
 const decomEco: Genotype = {
@@ -30,8 +28,6 @@ const decomEco: Genotype = {
     { kind: "build", structure: "fruiting" },
     { kind: "upgrade", target: "fruiting", ordinal: 1 },
   ],
-  tailBuild: "fruiting",
-  tailUpgrade: "fruiting",
 };
 
 const unreachable: Genotype = {
@@ -42,8 +38,6 @@ const unreachable: Genotype = {
     { kind: "build", structure: "hyphae" },
     { kind: "build", structure: "hyphae" },
   ],
-  tailBuild: "hyphae",
-  tailUpgrade: "hyphae",
 };
 
 console.log("single match:", describeGenotype(hyphaeRush));

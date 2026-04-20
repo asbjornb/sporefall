@@ -258,8 +258,6 @@ function renderGenesHist(evaluated: Evaluated[]): void {
         total += w;
       }
     }
-    counts[e.genotype.tailBuild] += w * 2;
-    total += w * 2;
   }
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   for (const [k, v] of entries) {
