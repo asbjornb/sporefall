@@ -44,10 +44,36 @@ function pickKind(rng: () => number): StructureKind {
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 
-function randomId(rng: () => number): string {
-  let s = "";
-  for (let i = 0; i < 6; i++) s += ALPHABET[randInt(rng, ALPHABET.length)];
-  return s;
+/**
+ * Canonical, content-addressed ID: same gene sequence → same ID. Lets HoF and
+ * the matchup cache dedup genotypes that play identically (the sim is
+ * deterministic) even when mutation / crossover reach the same sequence from
+ * different parents.
+ */
+export function canonicalId(genes: Gene[]): string {
+  let serialized = "";
+  for (const g of genes) {
+    serialized +=
+      g.kind === "build"
+        ? `B:${g.structure};`
+        : `U:${g.target}:${g.ordinal};`;
+  }
+  // Two independent FNV-1a streams mixed at the end give ~well-distributed 32
+  // bits, projected into 6 chars of ALPHABET (36^6 ≈ 2.2B).
+  let h1 = 0x811c9dc5;
+  let h2 = 0x1b873593;
+  for (let i = 0; i < serialized.length; i++) {
+    const c = serialized.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x85ebca6b) >>> 0;
+  }
+  let v = (h1 ^ Math.imul(h2, 0x9e3779b1)) >>> 0;
+  let out = "";
+  for (let i = 0; i < 6; i++) {
+    out += ALPHABET[v % ALPHABET.length];
+    v = Math.floor(v / ALPHABET.length);
+  }
+  return out;
 }
 
 /**
@@ -140,7 +166,7 @@ export function randomGenotype(
     genes.push(g);
   }
   return {
-    id: randomId(rng),
+    id: canonicalId(genes),
     genes,
   };
 }
@@ -189,7 +215,7 @@ export function mutate(
   genes = sanitize(genes);
 
   return {
-    id: randomId(rng),
+    id: canonicalId(genes),
     genes,
   };
 }
@@ -205,7 +231,7 @@ export function crossover(
   const joined = a.genes.slice(0, cutA).concat(b.genes.slice(cutB));
   const genes = sanitize(joined);
   return {
-    id: randomId(rng),
+    id: canonicalId(genes),
     genes,
   };
 }

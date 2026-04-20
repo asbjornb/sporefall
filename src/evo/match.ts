@@ -22,9 +22,13 @@ export function runMatch(
   const rightAgent = new GenotypeAgent("right", rightGeno);
   while (!state.winner && state.time < MAX_MATCH_SECONDS) {
     step(state, TICK_DT);
+    // Both agents decide from the same pre-command state, then both commands
+    // apply. Commands only touch their own colony's resources, so application
+    // order doesn't affect outcomes — this removes the first-mover advantage
+    // that previously required a side-swap to cancel.
     const lcmd = leftAgent.update(state, TICK_DT);
-    if (lcmd) applyCommand(state, lcmd);
     const rcmd = rightAgent.update(state, TICK_DT);
+    if (lcmd) applyCommand(state, lcmd);
     if (rcmd) applyCommand(state, rcmd);
   }
   return {
@@ -34,27 +38,20 @@ export function runMatch(
 }
 
 /**
- * Plays two games, one with each side swap, so first-move advantage cancels.
- * Scores are from `a`'s perspective: win = 1, draw = 0.5, loss = 0.
+ * One game per pair: `runMatch` is side-symmetric, so a single game is a fair
+ * measurement. Scores are from `a`'s perspective: win = 1, draw = 0.5, loss = 0.
  */
-export function runPair(a: Genotype, b: Genotype): { aScore: number; bScore: number; games: 2 } {
+export function runPair(a: Genotype, b: Genotype): { aScore: number; bScore: number; games: 1 } {
+  const res = runMatch(a, b);
   let aScore = 0;
   let bScore = 0;
-  for (let i = 0; i < 2; i++) {
-    const swap = i === 1;
-    const left = swap ? b : a;
-    const right = swap ? a : b;
-    const res = runMatch(left, right);
-    if (res.outcome === "draw") {
-      aScore += 0.5;
-      bScore += 0.5;
-    } else {
-      const aWon =
-        (res.outcome === "left" && !swap) ||
-        (res.outcome === "right" && swap);
-      if (aWon) aScore++;
-      else bScore++;
-    }
+  if (res.outcome === "draw") {
+    aScore = 0.5;
+    bScore = 0.5;
+  } else if (res.outcome === "left") {
+    aScore = 1;
+  } else {
+    bScore = 1;
   }
-  return { aScore, bScore, games: 2 };
+  return { aScore, bScore, games: 1 };
 }
