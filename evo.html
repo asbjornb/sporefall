@@ -301,6 +301,48 @@
         font-family: ui-monospace, Menlo, monospace;
         font-size: 0.7rem;
       }
+      .balance-row-changed .balance-input {
+        border-color: var(--accent);
+        background: rgba(217, 178, 74, 0.08);
+      }
+      .balance-row-changed .balance-label::before {
+        content: "●";
+        color: var(--accent);
+        margin-right: 4px;
+        font-size: 0.7rem;
+      }
+      #balance-summary {
+        margin: 4px 0 8px;
+        padding: 6px 10px;
+        border-radius: 4px;
+        background: rgba(20, 14, 8, 0.4);
+        border: 1px dashed rgba(232, 215, 182, 0.12);
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+      #balance-summary.balance-summary-has-diff {
+        border-color: rgba(217, 178, 74, 0.45);
+        background: rgba(217, 178, 74, 0.06);
+      }
+      .balance-summary-header {
+        color: var(--accent);
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .balance-summary-row {
+        display: flex;
+        gap: 10px;
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 0.75rem;
+        padding: 1px 0;
+      }
+      .balance-summary-path {
+        color: var(--text);
+        min-width: 180px;
+      }
+      .balance-summary-change {
+        color: var(--accent);
+      }
       #log {
         max-height: 200px;
         overflow-y: auto;
@@ -342,6 +384,7 @@
         <button id="balance-reset-btn" type="button">Reset to defaults</button>
         <span id="balance-dirty"></span>
       </div>
+      <div id="balance-summary"></div>
       <div id="balance-fields"></div>
     </details>
 
