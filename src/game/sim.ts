@@ -1,22 +1,11 @@
 import {
-  BASE_INCOME,
-  DISABLE_DURATION,
-  DISABLE_THRESHOLD,
-  FRONT_SPEED,
+  BALANCE,
   MAX_LEVEL,
-  RHIZO_DISSOLVE_RATE,
-  SCLEROTIUM_DAMAGE,
   SLOT_COUNT,
   START_COUNTDOWN,
   STRUCTURES,
-  START_HP,
-  START_NUTRIENTS,
-  SURGE_BURST_DAMAGE,
-  SURGE_BURST_PRESSURE_MULT,
   SURGE_BURST_VISUAL_DURATION,
-  SURGE_CHARGE_RATE,
   SURGE_SLOW_MAX,
-  SURGE_THRESHOLD,
   levelEffectMult,
   levelPressureMult,
   nextUpgradeCost,
@@ -33,10 +22,10 @@ import type {
 function makeColony(side: Side): ColonyState {
   return {
     side,
-    nutrients: START_NUTRIENTS,
-    income: BASE_INCOME,
-    hp: START_HP,
-    maxHp: START_HP,
+    nutrients: BALANCE.startNutrients,
+    income: BALANCE.baseIncome,
+    hp: BALANCE.startHp,
+    maxHp: BALANCE.startHp,
     slots: new Array(SLOT_COUNT).fill(null),
   };
 }
@@ -64,7 +53,7 @@ function structurePressure(s: Structure): number {
   const cfg = STRUCTURES[s.kind];
   const base = cfg.basePressure * levelPressureMult(s.kind, s.level);
   if (s.kind === "fruiting" && (s.surgeTimer ?? 0) > 0) {
-    return base * SURGE_BURST_PRESSURE_MULT;
+    return base * BALANCE.surgeBurstPressureMult;
   }
   return base;
 }
@@ -86,7 +75,7 @@ function recomputeIncome(colony: ColonyState): void {
         levelEffectMult(slot.kind, slot.level);
     }
   }
-  colony.income = BASE_INCOME + bonus;
+  colony.income = BALANCE.baseIncome + bonus;
 }
 
 export function canBuild(
@@ -219,13 +208,13 @@ function decayDisableMeter(colony: ColonyState, dt: number): void {
 function damageDisable(target: Structure, amount: number): boolean {
   if (target.status === "disabled") return false;
   target.disableMeter = Math.min(
-    DISABLE_THRESHOLD,
+    BALANCE.disableThreshold,
     target.disableMeter + amount,
   );
-  if (target.disableMeter >= DISABLE_THRESHOLD) {
+  if (target.disableMeter >= BALANCE.disableThreshold) {
     target.status = "disabled";
     target.disableMeter = 0;
-    target.disableTimer = DISABLE_DURATION;
+    target.disableTimer = BALANCE.disableDuration;
     if (target.kind === "fruiting") {
       // Surges pause while disabled; meter is preserved (per spec: "frozen").
       target.surgeTimer = 0;
@@ -305,7 +294,7 @@ function applyEffects(
       r.rhizoTargetId = target ? target.id : null;
     }
     if (!target) continue;
-    const rate = RHIZO_DISSOLVE_RATE * levelEffectMult(r.kind, r.level);
+    const rate = BALANCE.rhizoDissolveRate * levelEffectMult(r.kind, r.level);
     const becameDisabled = damageDisable(target, rate * dt);
     if (becameDisabled) r.rhizoTargetId = null;
   }
@@ -316,16 +305,16 @@ function applyEffects(
   for (const f of ownColony.slots) {
     if (!f || f.kind !== "fruiting") continue;
     if (f.status !== "active") continue;
-    const meterFill = f.disableMeter / DISABLE_THRESHOLD;
+    const meterFill = f.disableMeter / BALANCE.disableThreshold;
     const slow = SURGE_SLOW_MAX * meterFill;
     const rate =
-      SURGE_CHARGE_RATE * levelEffectMult(f.kind, f.level) * (1 - slow);
+      BALANCE.surgeChargeRate * levelEffectMult(f.kind, f.level) * (1 - slow);
     f.surgeCharge = Math.min(
-      SURGE_THRESHOLD,
+      BALANCE.surgeThreshold,
       (f.surgeCharge ?? 0) + Math.max(0, rate) * dt,
     );
-    if ((f.surgeCharge ?? 0) >= SURGE_THRESHOLD) {
-      const damage = SURGE_BURST_DAMAGE * levelEffectMult(f.kind, f.level);
+    if ((f.surgeCharge ?? 0) >= BALANCE.surgeThreshold) {
+      const damage = BALANCE.surgeBurstDamage * levelEffectMult(f.kind, f.level);
       let firstTargetId: number | null = null;
       for (const e of enemyColony.slots) {
         if (!e) continue;
@@ -367,14 +356,14 @@ export function step(state: GameState, dt: number): void {
   const pL = colonyPressure(state.left);
   const pR = colonyPressure(state.right);
   const net = pL - pR; // positive → left pushes right
-  state.front = Math.max(0, Math.min(1, state.front + net * FRONT_SPEED * dt));
+  state.front = Math.max(0, Math.min(1, state.front + net * BALANCE.frontSpeed * dt));
 
   // Damage on contact with the enemy sclerotium.
   if (state.front >= 0.98 && pL > 0) {
-    state.right.hp -= SCLEROTIUM_DAMAGE * dt;
+    state.right.hp -= BALANCE.sclerotiumDamage * dt;
   }
   if (state.front <= 0.02 && pR > 0) {
-    state.left.hp -= SCLEROTIUM_DAMAGE * dt;
+    state.left.hp -= BALANCE.sclerotiumDamage * dt;
   }
 
   if (state.left.hp <= 0) {

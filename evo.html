@@ -233,6 +233,74 @@
         font-family: ui-monospace, Menlo, monospace;
         font-size: 0.75rem;
       }
+      #balance-panel {
+        margin-bottom: 10px;
+      }
+      #balance-panel summary {
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #f0e2bc;
+        padding: 6px 0;
+        list-style: disclosure-closed;
+      }
+      #balance-panel[open] summary {
+        list-style: disclosure-open;
+      }
+      .balance-controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 4px 0 8px;
+      }
+      #balance-dirty {
+        font-size: 0.8rem;
+        color: #f2a67a;
+      }
+      .balance-group {
+        margin-top: 10px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: rgba(20, 14, 8, 0.4);
+      }
+      .balance-group-title {
+        font-size: 0.8rem;
+        letter-spacing: 0.05em;
+        color: var(--accent);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+      }
+      .balance-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 3px 0;
+        font-size: 0.8rem;
+      }
+      .balance-label {
+        flex: 1;
+        min-width: 0;
+        color: var(--text);
+      }
+      .balance-input {
+        width: 80px;
+        background: rgba(20, 14, 8, 0.8);
+        border: 1px solid rgba(232, 215, 182, 0.35);
+        color: #f8ecc8;
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 0.8rem;
+        padding: 3px 6px;
+        border-radius: 4px;
+      }
+      .balance-default {
+        width: 56px;
+        text-align: right;
+        color: var(--muted);
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 0.7rem;
+      }
       #log {
         max-height: 200px;
         overflow-y: auto;
@@ -266,6 +334,16 @@
       <progress id="progress" value="0" max="1"></progress>
       <span id="status">idle</span>
     </div>
+
+    <details id="balance-panel">
+      <summary>Balance — live-tunable game values</summary>
+      <div class="balance-controls">
+        <button id="balance-apply-btn" type="button">Apply &amp; reset run</button>
+        <button id="balance-reset-btn" type="button">Reset to defaults</button>
+        <span id="balance-dirty"></span>
+      </div>
+      <div id="balance-fields"></div>
+    </details>
 
     <div class="grid">
       <div>
