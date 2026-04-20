@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1b120a" />
+    <title>Sporefall — evo</title>
+    <style>
+      :root {
+        --bg: #1b120a;
+        --panel: rgba(40, 28, 16, 0.75);
+        --line: rgba(232, 215, 182, 0.2);
+        --text: #e8d7b6;
+        --muted: #c9b98b;
+        --accent: #d9b24a;
+        --accent2: #7a8a3a;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        min-height: 100%;
+      }
+      body {
+        padding: 12px;
+        box-sizing: border-box;
+        padding-bottom: 40px;
+      }
+      h1 {
+        margin: 0 0 4px 0;
+        font-size: 1.2rem;
+        letter-spacing: 0.04em;
+        color: #f8ecc8;
+      }
+      h2 {
+        margin: 0 0 6px 0;
+        font-size: 0.95rem;
+        letter-spacing: 0.04em;
+        color: #f0e2bc;
+        font-weight: 600;
+      }
+      .subtitle {
+        margin: 0 0 12px 0;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      button {
+        background: rgba(58, 42, 24, 0.95);
+        color: #f8ecc8;
+        border: 1px solid rgba(155, 176, 74, 0.6);
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 0.9rem;
+        font-family: inherit;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      button:not(:disabled):hover {
+        background: rgba(74, 54, 32, 0.95);
+      }
+      progress {
+        flex: 1 1 120px;
+        height: 14px;
+      }
+      #status {
+        font-size: 0.85rem;
+        color: var(--muted);
+        flex: 1 1 200px;
+        min-width: 200px;
+      }
+      .stat {
+        font-size: 0.8rem;
+        color: var(--muted);
+        margin-right: 10px;
+      }
+      .stat strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      @media (min-width: 900px) {
+        .grid {
+          grid-template-columns: 2fr 1fr;
+        }
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        padding: 2px 0;
+        border-bottom: 1px dashed rgba(232, 215, 182, 0.08);
+        font-size: 0.8rem;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      .row:last-child {
+        border-bottom: none;
+      }
+      .rank {
+        color: var(--muted);
+        width: 28px;
+        flex-shrink: 0;
+      }
+      .score {
+        color: var(--accent);
+        width: 54px;
+        flex-shrink: 0;
+        text-align: right;
+      }
+      .id {
+        color: var(--muted);
+        width: 60px;
+        flex-shrink: 0;
+      }
+      .body {
+        color: var(--text);
+        flex: 1;
+        word-break: break-word;
+      }
+      #chart {
+        width: 100%;
+        height: 160px;
+        background: var(--bg);
+        border-radius: 4px;
+        display: block;
+      }
+      .bar-row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        padding: 3px 0;
+        font-size: 0.8rem;
+      }
+      .bar-label {
+        width: 80px;
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+      .bar {
+        flex: 1;
+        height: 8px;
+        background: rgba(232, 215, 182, 0.08);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        background: var(--accent2);
+      }
+      .bar-val {
+        width: 40px;
+        text-align: right;
+        color: var(--text);
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 0.75rem;
+      }
+      #log {
+        max-height: 200px;
+        overflow-y: auto;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+      #log div {
+        padding: 1px 0;
+        border-bottom: 1px dashed rgba(232, 215, 182, 0.05);
+      }
+      section {
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Sporefall — Evolutionary Strategy Sim</h1>
+    <p class="subtitle">
+      Genotypes (sequences of build/upgrade actions) evolve via round-robin
+      against each other and a hall of fame. Workers:
+      <span id="worker-count">?</span>. Gen: <strong id="gen-num">0</strong>.
+    </p>
+
+    <div class="controls">
+      <button id="start-btn" type="button">Start</button>
+      <button id="stop-btn" type="button">Stop</button>
+      <button id="reset-btn" type="button">Reset</button>
+      <button id="download-btn" type="button">Download JSON</button>
+      <progress id="progress" value="0" max="1"></progress>
+      <span id="status">idle</span>
+    </div>
+
+    <div class="grid">
+      <div>
+        <div class="panel">
+          <h2>Leaderboard (current generation)</h2>
+          <div id="leaderboard"></div>
+        </div>
+        <section class="panel">
+          <h2>Score trend</h2>
+          <canvas id="chart" width="800" height="160"></canvas>
+        </section>
+        <section class="panel">
+          <h2>Log</h2>
+          <div id="log"></div>
+        </section>
+      </div>
+      <div>
+        <div class="panel">
+          <h2>Hall of Fame</h2>
+          <div id="hof"></div>
+        </div>
+        <section class="panel">
+          <h2>Build-kind usage (top half, score-weighted)</h2>
+          <div id="genes-hist"></div>
+        </section>
+        <section class="panel" style="font-size: 0.78rem; color: var(--muted)">
+          <strong>Legend:</strong> <code>+Hy</code> = build Hyphae.
+          <code>^Fr2</code> = upgrade the 2nd Fruiting. <code>tail</code> = what
+          to do after the gene list is exhausted (build X, upgrade-priority Y).
+        </section>
+      </div>
+    </div>
+
+    <script type="module" src="/src/evo/main.ts"></script>
+  </body>
+</html>
