@@ -590,9 +590,10 @@ export class GameScene extends Phaser.Scene {
       zone.setSize(rect.w, rect.h);
     });
 
-    const oursSlots = this.ourSide === "left" ? L.leftSlots : L.rightSlots;
+    // Our slots always render on the view-left — the renderer mirrors the
+    // board for the joiner so both players feel they're on the left.
     this.slotHit.forEach((hit, i) => {
-      const pos = oursSlots[i];
+      const pos = L.leftSlots[i];
       hit.setPosition(pos.x, pos.y);
       hit.setRadius(Math.max(18, L.slotRadius + Math.round(3 * sc)));
     });
@@ -733,8 +734,16 @@ export class GameScene extends Phaser.Scene {
     this.bg.fillCircle(x, L.slotAreaBottom, 2);
   }
 
+  /** Map a sim side to its view side. Our colony always occupies view-left so
+   *  both players feel they're on the same edge of the board; the enemy sits
+   *  on view-right. Sim semantics (state.left = host, state.right = guest)
+   *  stay absolute — this is purely a rendering concern. */
+  private viewSideOf(side: Side): Side {
+    return side === this.ourSide ? "left" : "right";
+  }
+
   private slotPosFor(side: Side, slotIdx: number): SlotSpec {
-    return side === "left"
+    return this.viewSideOf(side) === "left"
       ? this.layout.leftSlots[slotIdx]
       : this.layout.rightSlots[slotIdx];
   }
@@ -830,14 +839,22 @@ export class GameScene extends Phaser.Scene {
       this.bg.fillEllipse(x + 2, y - 2, 10, 3);
     }
 
-    const frontX = L.logLeft + L.logW * this.state.front;
+    // Tints follow view sides, not sim sides, so the joiner's colony color
+    // fills their view-left (and the host's fills their view-right).
+    const viewLeftTint = this.ourSide === "left" ? LEFT_TINT : RIGHT_TINT;
+    const viewRightTint = this.ourSide === "left" ? RIGHT_TINT : LEFT_TINT;
+    // Sim `front` is absolute (0 = sim-left heart, 1 = sim-right heart). For
+    // the joiner we mirror it so their pressure always pushes rightward on
+    // screen, matching the mirrored colony layout.
+    const viewFront = this.ourSide === "left" ? this.state.front : 1 - this.state.front;
+    const frontX = L.logLeft + L.logW * viewFront;
 
-    // Left colony color flow
-    this.bg.fillStyle(LEFT_TINT, 0.45);
+    // View-left colony color flow
+    this.bg.fillStyle(viewLeftTint, 0.45);
     this.bg.fillRect(L.logLeft, L.logTop, frontX - L.logLeft, L.logH);
 
-    // Right colony color flow
-    this.bg.fillStyle(RIGHT_TINT, 0.45);
+    // View-right colony color flow
+    this.bg.fillStyle(viewRightTint, 0.45);
     this.bg.fillRect(frontX, L.logTop, L.logRight - frontX, L.logH);
 
     // Feathered seam — stacked translucent bands blend the hard split into a
@@ -845,9 +862,9 @@ export class GameScene extends Phaser.Scene {
     for (let i = 1; i <= 4; i++) {
       const step = i * 5;
       const a = 0.09 / i;
-      this.fx.fillStyle(LEFT_TINT, a);
+      this.fx.fillStyle(viewLeftTint, a);
       this.fx.fillRect(frontX, L.logTop, step, L.logH);
-      this.fx.fillStyle(RIGHT_TINT, a);
+      this.fx.fillStyle(viewRightTint, a);
       this.fx.fillRect(frontX - step, L.logTop, step, L.logH);
     }
 
@@ -867,13 +884,15 @@ export class GameScene extends Phaser.Scene {
     this.fx.fillStyle(0xcfd6ea, pulse);
     this.fx.fillRect(frontX - seamWidth, L.logTop - 4, seamWidth * 2, L.logH + 8);
 
-    // Net pressure glow
-    const pL = pressureOf(this.state, "left");
-    const pR = pressureOf(this.state, "right");
-    const net = pL - pR;
-    if (Math.abs(net) > 0.1) {
-      const tint = net > 0 ? LEFT_TINT : RIGHT_TINT;
-      const dir = net > 0 ? 1 : -1;
+    // Net pressure glow — expressed in view terms so "winner pushes forward"
+    // reads consistently regardless of which sim side we are.
+    const enemy: Side = this.ourSide === "left" ? "right" : "left";
+    const myP = pressureOf(this.state, this.ourSide);
+    const theirP = pressureOf(this.state, enemy);
+    const netView = myP - theirP;
+    if (Math.abs(netView) > 0.1) {
+      const tint = netView > 0 ? viewLeftTint : viewRightTint;
+      const dir = netView > 0 ? 1 : -1;
       const glowX = frontX + dir * 36;
       this.fx.fillStyle(tint, 0.25);
       this.fx.fillCircle(glowX, L.logTop + L.logH / 2, 48);
@@ -898,8 +917,11 @@ export class GameScene extends Phaser.Scene {
 
   private drawSclerotia(): void {
     const L = this.layout;
-    this.drawHeart("left", L.leftHeartX, L.heartY);
-    this.drawHeart("right", L.rightHeartX, L.heartY);
+    const enemy: Side = this.ourSide === "left" ? "right" : "left";
+    // Our colony sits at the view-left heart; enemy at the view-right heart.
+    // For the host this is a no-op; for the joiner this mirrors the board.
+    this.drawHeart(this.ourSide, L.leftHeartX, L.heartY);
+    this.drawHeart(enemy, L.rightHeartX, L.heartY);
   }
 
   private drawHeart(side: Side, x: number, y: number): void {
@@ -915,7 +937,9 @@ export class GameScene extends Phaser.Scene {
     // its half of the log. Deterministic angles keyed off a per-side seed so
     // they don't jitter between frames, but lengths breathe with the pulse.
     const seed = side === "left" ? 0.13 : 0.41;
-    const inward = side === "left" ? 1 : -1;
+    // Tendril fan direction follows screen position, not sim side, so a
+    // joiner's heart rendered at view-left still fans into the log's middle.
+    const inward = x < this.layout.W / 2 ? 1 : -1;
     const tendrilCount = 9;
     this.bg.lineStyle(1, color, 0.55);
     for (let i = 0; i < tendrilCount; i++) {
@@ -998,7 +1022,10 @@ export class GameScene extends Phaser.Scene {
 
   private drawStructures(side: Side): void {
     const colony = this.state[side];
-    const positions = side === "left" ? this.layout.leftSlots : this.layout.rightSlots;
+    const positions =
+      this.viewSideOf(side) === "left"
+        ? this.layout.leftSlots
+        : this.layout.rightSlots;
     const r = this.layout.slotRadius;
     for (let i = 0; i < SLOT_COUNT; i++) {
       const basePos = positions[i];
@@ -1445,14 +1472,15 @@ export class GameScene extends Phaser.Scene {
       this.topText.setText("");
       return;
     }
-    const l = this.state.left;
-    const r = this.state.right;
-    const pL = pressureOf(this.state, "left").toFixed(1);
-    const pR = pressureOf(this.state, "right").toFixed(1);
+    const enemy: Side = this.ourSide === "left" ? "right" : "left";
+    const me = this.state[this.ourSide];
+    const them = this.state[enemy];
+    const myP = pressureOf(this.state, this.ourSide).toFixed(1);
+    const theirP = pressureOf(this.state, enemy).toFixed(1);
     this.topText.setText(
       [
-        `YOU   nutrients ${Math.floor(l.nutrients)}   +${l.income.toFixed(1)}/s   pressure ${pL}   HP ${Math.ceil(l.hp)}`,
-        `ENEMY nutrients ${Math.floor(r.nutrients)}   +${r.income.toFixed(1)}/s   pressure ${pR}   HP ${Math.ceil(r.hp)}`,
+        `YOU   nutrients ${Math.floor(me.nutrients)}   +${me.income.toFixed(1)}/s   pressure ${myP}   HP ${Math.ceil(me.hp)}`,
+        `ENEMY nutrients ${Math.floor(them.nutrients)}   +${them.income.toFixed(1)}/s   pressure ${theirP}   HP ${Math.ceil(them.hp)}`,
       ].join("\n"),
     );
   }
@@ -2097,9 +2125,9 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const cfg = STRUCTURES[s.kind];
-    const pos = this.ourSide === "left"
-      ? this.layout.leftSlots[idx]
-      : this.layout.rightSlots[idx];
+    // Our side is always rendered on the view-left (see viewSideOf), so the
+    // upgrade button always pins to the view-left slot positions.
+    const pos = this.layout.leftSlots[idx];
 
     // Selection ring on the selected slot.
     const sc = this.layout.uiScale;

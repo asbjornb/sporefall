@@ -62,7 +62,7 @@ When `state.winner` is set, both sides see "Play again? [Yes / Leave]". On both 
 ## Side assignment & rendering
 
 - Sim semantics stay absolute: `state.left` is the host, `state.right` is the joiner. `nextStructureId` and command application are deterministic based on absolute side.
-- MVP simplification: the joiner sees the natural layout where their colony is on the right. A proper view-flip (always render "you" on the left) is a follow-up — touches a lot of `GameScene` rendering code and isn't required for playability.
+- The renderer mirrors the board for the joiner via `GameScene.viewSideOf`, so both players see their own colony on the view-left. Colors stay keyed to the sim side (host = green, guest = orange) so identity is consistent across screens.
 - AI is disabled in MP modes. The right colony's commands come from the network instead of `SimpleAI`.
 
 ## Determinism contract
@@ -153,6 +153,6 @@ type Command =
 1. **Cross-browser determinism** (Chrome ↔ Safari floats). Mitigated by the lack of transcendentals in the sim. *Spike:* run Phase 1's check on both engines via a shared input log. ~½ day.
 2. **Trystero reachability** on LTE / corporate / dual-NAT. *Spike:* 50-line "two browsers exchange a string" test page across (laptop+wifi, laptop+LTE phone, two ISPs). ~½ day. If (b)/(c) fails sometimes, document TURN need.
 3. **30 Hz render smoothness.** Easy to fix later with render-side interpolation between two ticks; defer until visibly bad.
-4. **Renderer mirroring.** MVP accepts joiner sees colony-on-the-right; proper flip is a follow-up.
+4. ~~**Renderer mirroring.** MVP accepts joiner sees colony-on-the-right; proper flip is a follow-up.~~ Implemented — the joiner's view mirrors the board so "you" always render on the left.
 
 Spikes (1) and (2) run in parallel before committing to Phase 2+.
