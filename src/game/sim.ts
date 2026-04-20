@@ -6,6 +6,7 @@ import {
   STRUCTURES,
   SURGE_BURST_VISUAL_DURATION,
   SURGE_SLOW_MAX,
+  levelDecayBonus,
   levelEffectMult,
   levelPressureMult,
   nextUpgradeCost,
@@ -199,7 +200,8 @@ function decayDisableMeter(colony: ColonyState, dt: number): void {
     if (!s) continue;
     if (s.status === "disabled") continue;
     if (s.disableMeter <= 0) continue;
-    const decay = STRUCTURES[s.kind].disableDecay;
+    const decay =
+      STRUCTURES[s.kind].disableDecay + levelDecayBonus(s.kind, s.level);
     s.disableMeter = Math.max(0, s.disableMeter - decay * dt);
   }
 }
