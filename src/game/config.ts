@@ -258,26 +258,33 @@ function structureTunables(k: StructureKind): StructureTunables {
   };
 }
 
+/**
+ * Snapshot of compile-time defaults captured at module load, BEFORE any call
+ * to setBalance() can mutate STRUCTURES. Used as the immutable source of truth
+ * for defaultBalance() / resetBalance().
+ */
+const COMPILE_TIME_DEFAULTS: BalanceSnapshot = {
+  frontSpeed: FRONT_SPEED,
+  sclerotiumDamage: SCLEROTIUM_DAMAGE,
+  startHp: START_HP,
+  startNutrients: START_NUTRIENTS,
+  baseIncome: BASE_INCOME,
+  disableThreshold: DISABLE_THRESHOLD,
+  disableDuration: DISABLE_DURATION,
+  rhizoDissolveRate: RHIZO_DISSOLVE_RATE,
+  surgeThreshold: SURGE_THRESHOLD,
+  surgeChargeRate: SURGE_CHARGE_RATE,
+  surgeBurstDamage: SURGE_BURST_DAMAGE,
+  surgeBurstPressureMult: SURGE_BURST_PRESSURE_MULT,
+  hyphae: structureTunables("hyphae"),
+  rhizomorph: structureTunables("rhizomorph"),
+  fruiting: structureTunables("fruiting"),
+  decomposer: structureTunables("decomposer"),
+};
+
 /** Deep-cloned canonical defaults. Safe to mutate returned object. */
 export function defaultBalance(): BalanceSnapshot {
-  return {
-    frontSpeed: FRONT_SPEED,
-    sclerotiumDamage: SCLEROTIUM_DAMAGE,
-    startHp: START_HP,
-    startNutrients: START_NUTRIENTS,
-    baseIncome: BASE_INCOME,
-    disableThreshold: DISABLE_THRESHOLD,
-    disableDuration: DISABLE_DURATION,
-    rhizoDissolveRate: RHIZO_DISSOLVE_RATE,
-    surgeThreshold: SURGE_THRESHOLD,
-    surgeChargeRate: SURGE_CHARGE_RATE,
-    surgeBurstDamage: SURGE_BURST_DAMAGE,
-    surgeBurstPressureMult: SURGE_BURST_PRESSURE_MULT,
-    hyphae: structureTunables("hyphae"),
-    rhizomorph: structureTunables("rhizomorph"),
-    fruiting: structureTunables("fruiting"),
-    decomposer: structureTunables("decomposer"),
-  };
+  return JSON.parse(JSON.stringify(COMPILE_TIME_DEFAULTS));
 }
 
 /** Live mutable balance the sim consults. Sim code reads BALANCE.*; tweak via setBalance. */
@@ -336,4 +343,45 @@ export function resetBalance(): void {
 /** Deep-cloned current balance — safe to send across worker message boundary. */
 export function snapshotBalance(): BalanceSnapshot {
   return JSON.parse(JSON.stringify(BALANCE));
+}
+
+export interface BalanceDiffEntry {
+  /** Dotted path, e.g. "hyphae.cost" or "frontSpeed". */
+  path: string;
+  value: number;
+  default: number;
+}
+
+/**
+ * List every numeric field in `snap` that differs from the compile-time
+ * default. Used by the evo UI to summarize current overrides.
+ */
+export function balanceDiff(snap: BalanceSnapshot): BalanceDiffEntry[] {
+  const out: BalanceDiffEntry[] = [];
+  const walk = (
+    path: string,
+    cur: Record<string, unknown>,
+    def: Record<string, unknown>,
+  ) => {
+    for (const k of Object.keys(def)) {
+      const p = path ? `${path}.${k}` : k;
+      const cv = cur[k];
+      const dv = def[k];
+      if (typeof dv === "number" && typeof cv === "number") {
+        if (cv !== dv) out.push({ path: p, value: cv, default: dv });
+      } else if (dv && typeof dv === "object" && cv && typeof cv === "object") {
+        walk(
+          p,
+          cv as Record<string, unknown>,
+          dv as Record<string, unknown>,
+        );
+      }
+    }
+  };
+  walk(
+    "",
+    snap as unknown as Record<string, unknown>,
+    COMPILE_TIME_DEFAULTS as unknown as Record<string, unknown>,
+  );
+  return out;
 }

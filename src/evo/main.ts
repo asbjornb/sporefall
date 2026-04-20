@@ -1,4 +1,5 @@
 import {
+  balanceDiff,
   defaultBalance,
   resetBalance,
   setBalance,
@@ -48,6 +49,7 @@ const els = {
   balanceApply: qs<HTMLButtonElement>("#balance-apply-btn"),
   balanceReset: qs<HTMLButtonElement>("#balance-reset-btn"),
   balanceDirty: qs<HTMLSpanElement>("#balance-dirty"),
+  balanceSummary: qs<HTMLDivElement>("#balance-summary"),
 };
 
 els.workers.textContent = String(workerCount);
@@ -519,6 +521,7 @@ function setField(snap: BalanceSnapshot, path: string, value: number): void {
 function makeFieldRow(f: BalanceField, defaults: BalanceSnapshot): HTMLElement {
   const row = document.createElement("label");
   row.className = "balance-row";
+  row.dataset.path = f.path;
   const label = document.createElement("span");
   label.className = "balance-label";
   label.textContent = f.label;
@@ -533,13 +536,19 @@ function makeFieldRow(f: BalanceField, defaults: BalanceSnapshot): HTMLElement {
     const n = Number(input.value);
     if (!Number.isFinite(n)) return;
     setField(balanceDraft, f.path, n);
+    markRowChanged(row, n !== getField(defaults, f.path));
     updateBalanceDirty();
   });
   const def = document.createElement("span");
   def.className = "balance-default";
   def.textContent = `(${getField(defaults, f.path)})`;
   row.append(label, input, def);
+  markRowChanged(row, getField(balanceDraft, f.path) !== getField(defaults, f.path));
   return row;
+}
+
+function markRowChanged(row: HTMLElement, changed: boolean): void {
+  row.classList.toggle("balance-row-changed", changed);
 }
 
 function renderBalancePanel(): void {
@@ -577,10 +586,44 @@ function balanceIsDirty(): boolean {
   return JSON.stringify(live) !== JSON.stringify(balanceDraft);
 }
 
+function formatValue(n: number): string {
+  if (Number.isInteger(n)) return String(n);
+  return String(Number(n.toFixed(4)));
+}
+
+function renderBalanceSummary(): void {
+  const parent = els.balanceSummary;
+  parent.innerHTML = "";
+  const diff = balanceDiff(balanceDraft);
+  if (diff.length === 0) {
+    parent.textContent = "All values at defaults.";
+    parent.classList.remove("balance-summary-has-diff");
+    return;
+  }
+  parent.classList.add("balance-summary-has-diff");
+  const header = document.createElement("div");
+  header.className = "balance-summary-header";
+  header.textContent = `${diff.length} change${diff.length === 1 ? "" : "s"} from defaults:`;
+  parent.appendChild(header);
+  for (const d of diff) {
+    const row = document.createElement("div");
+    row.className = "balance-summary-row";
+    const path = document.createElement("span");
+    path.className = "balance-summary-path";
+    path.textContent = d.path;
+    const change = document.createElement("span");
+    change.className = "balance-summary-change";
+    change.textContent = `${formatValue(d.default)} → ${formatValue(d.value)}`;
+    row.append(path, change);
+    parent.appendChild(row);
+  }
+}
+
 function updateBalanceDirty(): void {
   const dirty = balanceIsDirty();
   els.balanceDirty.textContent = dirty ? "(unsaved changes)" : "";
   els.balanceApply.disabled = !dirty || running;
+  renderBalanceSummary();
 }
 
 function applyBalance(): void {
