@@ -199,3 +199,129 @@ export const SURGE_SLOW_MAX = 0.85;
  * spore cloud shoving the front while it disables nearby enemies.
  */
 export const SURGE_BURST_PRESSURE_MULT = 5;
+
+// ---------- Live-tunable balance ----------
+
+/**
+ * Numeric fields that the evo-sim UI can override at runtime without a rebuild.
+ * The sim reads from `BALANCE` (mutable) instead of the const exports above,
+ * so callers in the main game still see the compile-time defaults for display
+ * purposes while the headless sim can be retuned on the fly.
+ */
+export interface StructureTunables {
+  cost: number;
+  buildTime: number;
+  basePressure: number;
+  incomeBonus: number;
+  disableDecay: number;
+}
+
+export interface BalanceSnapshot {
+  frontSpeed: number;
+  sclerotiumDamage: number;
+  startHp: number;
+  startNutrients: number;
+  baseIncome: number;
+  disableThreshold: number;
+  disableDuration: number;
+  rhizoDissolveRate: number;
+  surgeThreshold: number;
+  surgeChargeRate: number;
+  surgeBurstDamage: number;
+  surgeBurstPressureMult: number;
+  hyphae: StructureTunables;
+  rhizomorph: StructureTunables;
+  fruiting: StructureTunables;
+  decomposer: StructureTunables;
+}
+
+function structureTunables(k: StructureKind): StructureTunables {
+  const s = STRUCTURES[k];
+  return {
+    cost: s.cost,
+    buildTime: s.buildTime,
+    basePressure: s.basePressure,
+    incomeBonus: s.incomeBonus,
+    disableDecay: s.disableDecay,
+  };
+}
+
+/** Deep-cloned canonical defaults. Safe to mutate returned object. */
+export function defaultBalance(): BalanceSnapshot {
+  return {
+    frontSpeed: FRONT_SPEED,
+    sclerotiumDamage: SCLEROTIUM_DAMAGE,
+    startHp: START_HP,
+    startNutrients: START_NUTRIENTS,
+    baseIncome: BASE_INCOME,
+    disableThreshold: DISABLE_THRESHOLD,
+    disableDuration: DISABLE_DURATION,
+    rhizoDissolveRate: RHIZO_DISSOLVE_RATE,
+    surgeThreshold: SURGE_THRESHOLD,
+    surgeChargeRate: SURGE_CHARGE_RATE,
+    surgeBurstDamage: SURGE_BURST_DAMAGE,
+    surgeBurstPressureMult: SURGE_BURST_PRESSURE_MULT,
+    hyphae: structureTunables("hyphae"),
+    rhizomorph: structureTunables("rhizomorph"),
+    fruiting: structureTunables("fruiting"),
+    decomposer: structureTunables("decomposer"),
+  };
+}
+
+/** Live mutable balance the sim consults. Sim code reads BALANCE.*; tweak via setBalance. */
+export const BALANCE: BalanceSnapshot = defaultBalance();
+
+const TUNABLE_KINDS: StructureKind[] = [
+  "hyphae",
+  "rhizomorph",
+  "fruiting",
+  "decomposer",
+];
+const STRUCTURE_FIELDS: Array<keyof StructureTunables> = [
+  "cost",
+  "buildTime",
+  "basePressure",
+  "incomeBonus",
+  "disableDecay",
+];
+
+/**
+ * Apply an override on top of the current balance. Unset fields keep their
+ * current value (not the default), so successive calls accumulate. Also mirrors
+ * tunable fields into STRUCTURES so existing sim code that reads
+ * STRUCTURES[kind].cost picks up the change without being refactored.
+ */
+export function setBalance(override: Partial<BalanceSnapshot>): void {
+  for (const k of Object.keys(override) as Array<keyof BalanceSnapshot>) {
+    const v = override[k];
+    if (v === undefined) continue;
+    if (typeof v === "number") {
+      (BALANCE[k] as number) = v;
+    } else {
+      // Structure tunables: merge per-field so partial overrides work.
+      const target = BALANCE[k as StructureKind];
+      for (const f of STRUCTURE_FIELDS) {
+        const nv = (v as StructureTunables)[f];
+        if (typeof nv === "number") target[f] = nv;
+      }
+    }
+  }
+  // Mirror into STRUCTURES so every consumer (sim.ts, ai.ts) sees the change.
+  for (const k of TUNABLE_KINDS) {
+    const t = BALANCE[k];
+    for (const f of STRUCTURE_FIELDS) {
+      STRUCTURES[k][f] = t[f];
+    }
+  }
+}
+
+/** Reset BALANCE + STRUCTURES to compile-time defaults. */
+export function resetBalance(): void {
+  const d = defaultBalance();
+  setBalance(d);
+}
+
+/** Deep-cloned current balance — safe to send across worker message boundary. */
+export function snapshotBalance(): BalanceSnapshot {
+  return JSON.parse(JSON.stringify(BALANCE));
+}

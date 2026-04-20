@@ -1,4 +1,13 @@
 import {
+  defaultBalance,
+  resetBalance,
+  setBalance,
+  snapshotBalance,
+  type BalanceSnapshot,
+  type StructureTunables,
+} from "../game/config";
+import type { StructureKind } from "../game/types";
+import {
   DEFAULT_CONFIG,
   GA,
   type Evaluated,
@@ -35,6 +44,10 @@ const els = {
   chart: qs<HTMLCanvasElement>("#chart"),
   genesHist: qs<HTMLDivElement>("#genes-hist"),
   matrix: qs<HTMLDivElement>("#matrix"),
+  balancePanel: qs<HTMLDivElement>("#balance-fields"),
+  balanceApply: qs<HTMLButtonElement>("#balance-apply-btn"),
+  balanceReset: qs<HTMLButtonElement>("#balance-reset-btn"),
+  balanceDirty: qs<HTMLSpanElement>("#balance-dirty"),
 };
 
 els.workers.textContent = String(workerCount);
@@ -51,9 +64,11 @@ let ga: GA | null = null;
 let running = false;
 let history: HistoryPoint[] = [];
 let lastResult: GenerationResult | null = null;
+/** Edited-but-not-yet-applied balance values, keyed by field path. */
+let balanceDraft: BalanceSnapshot = snapshotBalance();
 
 function ensurePool(): WorkerPool {
-  if (!pool) pool = new WorkerPool(workerCount);
+  if (!pool) pool = new WorkerPool(workerCount, () => snapshotBalance());
   return pool;
 }
 
@@ -374,6 +389,7 @@ function download(): void {
     {
       generation: ga?.generation ?? 0,
       config: DEFAULT_CONFIG,
+      balance: snapshotBalance(),
       workerCount,
       history,
       lastResult,
@@ -395,6 +411,7 @@ function downloadSummary(): void {
     generation: ga?.generation ?? 0,
     exportedAt: new Date().toISOString(),
     config: DEFAULT_CONFIG,
+    balance: snapshotBalance(),
     workerCount,
     history, // tiny — one row per generation
     hallOfFame: result
@@ -432,10 +449,179 @@ function downloadSummary(): void {
   saveJson(summary, "summary");
 }
 
+interface BalanceField {
+  path: string; // dotted path within BalanceSnapshot
+  label: string;
+  step: number;
+  min?: number;
+}
+
+const GLOBAL_FIELDS: BalanceField[] = [
+  { path: "frontSpeed", label: "Front speed", step: 0.001, min: 0 },
+  { path: "sclerotiumDamage", label: "Sclerotium damage/s", step: 0.5, min: 0 },
+  { path: "startHp", label: "Start HP", step: 10, min: 1 },
+  { path: "startNutrients", label: "Start nutrients", step: 5, min: 0 },
+  { path: "baseIncome", label: "Base income/s", step: 0.5, min: 0 },
+];
+
+const COMBAT_FIELDS: BalanceField[] = [
+  { path: "disableThreshold", label: "Disable threshold", step: 10, min: 1 },
+  { path: "disableDuration", label: "Disable duration (s)", step: 1, min: 0 },
+  { path: "rhizoDissolveRate", label: "Rhizo dissolve rate/s", step: 1, min: 0 },
+  { path: "surgeThreshold", label: "Surge threshold", step: 10, min: 1 },
+  { path: "surgeChargeRate", label: "Surge charge rate/s", step: 1, min: 0 },
+  { path: "surgeBurstDamage", label: "Surge burst damage", step: 5, min: 0 },
+  {
+    path: "surgeBurstPressureMult",
+    label: "Surge burst pressure ×",
+    step: 0.5,
+    min: 1,
+  },
+];
+
+const STRUCTURE_KINDS: StructureKind[] = [
+  "hyphae",
+  "rhizomorph",
+  "fruiting",
+  "decomposer",
+];
+
+const STRUCTURE_FIELDS: Array<keyof StructureTunables> = [
+  "cost",
+  "buildTime",
+  "basePressure",
+  "incomeBonus",
+  "disableDecay",
+];
+
+const STRUCTURE_FIELD_STEPS: Record<keyof StructureTunables, number> = {
+  cost: 5,
+  buildTime: 0.5,
+  basePressure: 0.25,
+  incomeBonus: 0.25,
+  disableDecay: 0.5,
+};
+
+function getField(snap: BalanceSnapshot, path: string): number {
+  const parts = path.split(".");
+  let v: unknown = snap;
+  for (const p of parts) v = (v as Record<string, unknown>)[p];
+  return v as number;
+}
+
+function setField(snap: BalanceSnapshot, path: string, value: number): void {
+  const parts = path.split(".");
+  let v: Record<string, unknown> = snap as unknown as Record<string, unknown>;
+  for (let i = 0; i < parts.length - 1; i++) {
+    v = v[parts[i]] as Record<string, unknown>;
+  }
+  v[parts[parts.length - 1]] = value;
+}
+
+function makeFieldRow(f: BalanceField, defaults: BalanceSnapshot): HTMLElement {
+  const row = document.createElement("label");
+  row.className = "balance-row";
+  const label = document.createElement("span");
+  label.className = "balance-label";
+  label.textContent = f.label;
+  const input = document.createElement("input");
+  input.type = "number";
+  input.step = String(f.step);
+  if (f.min !== undefined) input.min = String(f.min);
+  input.value = String(getField(balanceDraft, f.path));
+  input.dataset.path = f.path;
+  input.className = "balance-input";
+  input.addEventListener("input", () => {
+    const n = Number(input.value);
+    if (!Number.isFinite(n)) return;
+    setField(balanceDraft, f.path, n);
+    updateBalanceDirty();
+  });
+  const def = document.createElement("span");
+  def.className = "balance-default";
+  def.textContent = `(${getField(defaults, f.path)})`;
+  row.append(label, input, def);
+  return row;
+}
+
+function renderBalancePanel(): void {
+  const defaults = defaultBalance();
+  const parent = els.balancePanel;
+  parent.innerHTML = "";
+
+  const mkSection = (title: string, fields: BalanceField[]) => {
+    const group = document.createElement("div");
+    group.className = "balance-group";
+    const h = document.createElement("div");
+    h.className = "balance-group-title";
+    h.textContent = title;
+    group.appendChild(h);
+    for (const f of fields) group.appendChild(makeFieldRow(f, defaults));
+    parent.appendChild(group);
+  };
+
+  mkSection("Global", GLOBAL_FIELDS);
+  mkSection("Combat / disable / surge", COMBAT_FIELDS);
+  for (const kind of STRUCTURE_KINDS) {
+    const perKind: BalanceField[] = STRUCTURE_FIELDS.map((f) => ({
+      path: `${kind}.${f}`,
+      label: f,
+      step: STRUCTURE_FIELD_STEPS[f],
+      min: 0,
+    }));
+    mkSection(kind.charAt(0).toUpperCase() + kind.slice(1), perKind);
+  }
+  updateBalanceDirty();
+}
+
+function balanceIsDirty(): boolean {
+  const live = snapshotBalance();
+  return JSON.stringify(live) !== JSON.stringify(balanceDraft);
+}
+
+function updateBalanceDirty(): void {
+  const dirty = balanceIsDirty();
+  els.balanceDirty.textContent = dirty ? "(unsaved changes)" : "";
+  els.balanceApply.disabled = !dirty || running;
+}
+
+function applyBalance(): void {
+  if (running) return;
+  setBalance(balanceDraft);
+  // Invalidate any cached matchups — they were computed at the old balance.
+  if (pool) {
+    pool.terminate();
+    pool = null;
+  }
+  ga = null;
+  history = [];
+  lastResult = null;
+  els.gen.textContent = "0";
+  els.leaderboard.innerHTML = "";
+  els.tiers.innerHTML = "";
+  els.matrix.innerHTML = "";
+  els.genesHist.innerHTML = "";
+  renderChart();
+  log("balance applied — GA reset, press Start");
+  els.status.textContent = "balance applied — press Start";
+  updateBalanceDirty();
+  updateButtons();
+}
+
+function resetBalanceToDefaults(): void {
+  if (running) return;
+  resetBalance();
+  balanceDraft = snapshotBalance();
+  renderBalancePanel();
+  log("balance reset to defaults");
+}
+
 function updateButtons(): void {
   els.startBtn.disabled = running;
   els.stopBtn.disabled = !running;
   els.resetBtn.disabled = running;
+  els.balanceApply.disabled = running || !balanceIsDirty();
+  els.balanceReset.disabled = running;
 }
 
 els.startBtn.addEventListener("click", start);
@@ -443,6 +629,10 @@ els.stopBtn.addEventListener("click", stop);
 els.resetBtn.addEventListener("click", reset);
 els.downloadBtn.addEventListener("click", download);
 els.downloadSummaryBtn.addEventListener("click", downloadSummary);
+els.balanceApply.addEventListener("click", applyBalance);
+els.balanceReset.addEventListener("click", resetBalanceToDefaults);
+
+renderBalancePanel();
 
 window.addEventListener("beforeunload", () => {
   if (pool) pool.terminate();
