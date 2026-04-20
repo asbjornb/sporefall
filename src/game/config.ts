@@ -56,7 +56,7 @@ export interface StructureConfig {
 export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   hyphae: {
     cost: 25,
-    buildTime: 4,
+    buildTime: 5,
     basePressure: 3,
     incomeBonus: 0,
     disableDecay: 4,
@@ -74,8 +74,8 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   },
   rhizomorph: {
     cost: 40,
-    buildTime: 6,
-    basePressure: 3,
+    buildTime: 5,
+    basePressure: 2,
     incomeBonus: 0,
     disableDecay: 5,
     label: "Rhizomorph",
@@ -109,10 +109,10 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     ],
   },
   decomposer: {
-    cost: 40,
-    buildTime: 12,
+    cost: 30,
+    buildTime: 10,
     basePressure: 0,
-    incomeBonus: 1.5,
+    incomeBonus: 1,
     disableDecay: 4,
     label: "Decomposer",
     short: "Decom",
@@ -175,7 +175,7 @@ export function nextUpgradeTime(
 }
 
 /** Damage per second applied to an enemy sclerotium when the front is at it. */
-export const SCLEROTIUM_DAMAGE = 6;
+export const SCLEROTIUM_DAMAGE = 5;
 
 /** How fast the front moves in normalized-units/second per unit of net pressure. */
 export const FRONT_SPEED = 0.006;
@@ -193,7 +193,7 @@ export const RHIZO_DISSOLVE_RATE = 10;
 /** Fruiting surge meter threshold. */
 export const SURGE_THRESHOLD = 100;
 /** Base surge charge rate at level 1, per second. */
-export const SURGE_CHARGE_RATE = 12;
+export const SURGE_CHARGE_RATE = 10;
 /** Per-target disable damage on burst, level 1. Burst is AoE — hits every active enemy (except decomposer). */
 export const SURGE_BURST_DAMAGE = 60;
 /** Seconds the burst-fired visual state lasts (animation only, no gameplay effect). */
