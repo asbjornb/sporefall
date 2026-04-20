@@ -56,7 +56,7 @@ export interface StructureConfig {
 export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   hyphae: {
     cost: 25,
-    buildTime: 4,
+    buildTime: 5,
     basePressure: 3,
     incomeBonus: 0,
     disableDecay: 4,
@@ -75,7 +75,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   rhizomorph: {
     cost: 40,
     buildTime: 6,
-    basePressure: 3,
+    basePressure: 2,
     incomeBonus: 0,
     disableDecay: 5,
     label: "Rhizomorph",
@@ -188,7 +188,7 @@ export const DISABLE_THRESHOLD = 100;
 export const DISABLE_DURATION = 6;
 
 /** Rhizomorph dissolve rate (disable damage / second) at level 1. Applies to any target. */
-export const RHIZO_DISSOLVE_RATE = 10;
+export const RHIZO_DISSOLVE_RATE = 8;
 
 /** Fruiting surge meter threshold. */
 export const SURGE_THRESHOLD = 100;
