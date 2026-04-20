@@ -24,6 +24,8 @@ export interface UpgradeStep {
    *  Effects: rhizo dissolve, fruiting surge charge / burst,
    *  decomposer income bonus. */
   effectMult: number;
+  /** Flat bonus added to the structure's disableDecay while at this level or higher. */
+  decayBonus: number;
 }
 
 export interface StructureConfig {
@@ -61,13 +63,13 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     label: "Hyphal Mat",
     short: "Hyphae",
     color: 0x7a8a3a,
-    // build cost 25 → upgrades: 20, 35, 55, 80, 110 (total 300n to max)
+    // build cost 25 → upgrades: 25, 35, 55, 80, 110 (total 305n to max)
     upgrades: [
-      { cost: 20, time: 6, pressureMult: 1.5, effectMult: 1.4 },
-      { cost: 35, time: 8, pressureMult: 2.1, effectMult: 1.9 },
-      { cost: 55, time: 10, pressureMult: 2.9, effectMult: 2.6 },
-      { cost: 80, time: 12, pressureMult: 4.0, effectMult: 3.5 },
-      { cost: 110, time: 14, pressureMult: 5.5, effectMult: 4.7 },
+      { cost: 25, time: 6, pressureMult: 2.0, effectMult: 1.8, decayBonus: 1 },
+      { cost: 35, time: 8, pressureMult: 2.7, effectMult: 2.4, decayBonus: 0 },
+      { cost: 55, time: 10, pressureMult: 3.5, effectMult: 3.1, decayBonus: 1 },
+      { cost: 80, time: 12, pressureMult: 4.5, effectMult: 3.9, decayBonus: 0 },
+      { cost: 110, time: 14, pressureMult: 5.5, effectMult: 4.7, decayBonus: 0 },
     ],
   },
   rhizomorph: {
@@ -81,11 +83,11 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     color: 0xbfc4c9,
     // build cost 40 → upgrades: 40, 70, 110, 160, 220 (total 600n to max)
     upgrades: [
-      { cost: 40, time: 8, pressureMult: 1.5, effectMult: 1.5 },
-      { cost: 70, time: 10, pressureMult: 2.1, effectMult: 2.1 },
-      { cost: 110, time: 12, pressureMult: 2.9, effectMult: 2.9 },
-      { cost: 160, time: 14, pressureMult: 4.0, effectMult: 4.0 },
-      { cost: 220, time: 16, pressureMult: 5.5, effectMult: 5.5 },
+      { cost: 40, time: 8, pressureMult: 2.0, effectMult: 2.0, decayBonus: 1 },
+      { cost: 70, time: 10, pressureMult: 2.7, effectMult: 2.7, decayBonus: 0 },
+      { cost: 110, time: 12, pressureMult: 3.5, effectMult: 3.5, decayBonus: 1 },
+      { cost: 160, time: 14, pressureMult: 4.5, effectMult: 4.5, decayBonus: 0 },
+      { cost: 220, time: 16, pressureMult: 5.5, effectMult: 5.5, decayBonus: 0 },
     ],
   },
   fruiting: {
@@ -99,11 +101,11 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     color: 0x8a4fa8,
     // build cost 60 → upgrades: 60, 105, 165, 240, 330 (total 900n to max)
     upgrades: [
-      { cost: 60, time: 10, pressureMult: 1.5, effectMult: 1.5 },
-      { cost: 105, time: 12, pressureMult: 2.1, effectMult: 2.1 },
-      { cost: 165, time: 14, pressureMult: 2.9, effectMult: 2.9 },
-      { cost: 240, time: 16, pressureMult: 4.0, effectMult: 4.0 },
-      { cost: 330, time: 18, pressureMult: 5.5, effectMult: 5.5 },
+      { cost: 60, time: 10, pressureMult: 2.0, effectMult: 2.0, decayBonus: 1 },
+      { cost: 105, time: 12, pressureMult: 2.7, effectMult: 2.7, decayBonus: 0 },
+      { cost: 165, time: 14, pressureMult: 3.5, effectMult: 3.5, decayBonus: 1 },
+      { cost: 240, time: 16, pressureMult: 4.5, effectMult: 4.5, decayBonus: 0 },
+      { cost: 330, time: 18, pressureMult: 5.5, effectMult: 5.5, decayBonus: 0 },
     ],
   },
   decomposer: {
@@ -118,11 +120,11 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
     // Decomposer has no pressure, so pressureMult is unused — kept for symmetry.
     // build cost 40 → upgrades: 40, 70, 110, 160, 220 (total 600n to max)
     upgrades: [
-      { cost: 40, time: 8, pressureMult: 1.0, effectMult: 1.5 },
-      { cost: 70, time: 10, pressureMult: 1.0, effectMult: 2.1 },
-      { cost: 110, time: 12, pressureMult: 1.0, effectMult: 2.9 },
-      { cost: 160, time: 14, pressureMult: 1.0, effectMult: 4.0 },
-      { cost: 220, time: 16, pressureMult: 1.0, effectMult: 5.5 },
+      { cost: 40, time: 8, pressureMult: 1.0, effectMult: 2.0, decayBonus: 1 },
+      { cost: 70, time: 10, pressureMult: 1.0, effectMult: 2.7, decayBonus: 0 },
+      { cost: 110, time: 12, pressureMult: 1.0, effectMult: 3.5, decayBonus: 1 },
+      { cost: 160, time: 14, pressureMult: 1.0, effectMult: 4.5, decayBonus: 0 },
+      { cost: 220, time: 16, pressureMult: 1.0, effectMult: 5.5, decayBonus: 0 },
     ],
   },
 };
@@ -142,6 +144,16 @@ export function levelEffectMult(kind: StructureKind, level: number): number {
   if (level <= 1) return 1;
   const step = STRUCTURES[kind].upgrades[level - 2];
   return step ? step.effectMult : 1;
+}
+
+/** Sum of decay bonuses from every upgrade step up to (and including) the given level. */
+export function levelDecayBonus(kind: StructureKind, level: number): number {
+  if (level <= 1) return 0;
+  const steps = STRUCTURES[kind].upgrades;
+  let bonus = 0;
+  const last = Math.min(level - 1, steps.length);
+  for (let i = 0; i < last; i++) bonus += steps[i].decayBonus;
+  return bonus;
 }
 
 /** Cost of the next upgrade for a structure at the given level, or null if maxed. */
