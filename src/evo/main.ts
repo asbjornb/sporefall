@@ -25,6 +25,7 @@ const els = {
   stopBtn: qs<HTMLButtonElement>("#stop-btn"),
   resetBtn: qs<HTMLButtonElement>("#reset-btn"),
   downloadBtn: qs<HTMLButtonElement>("#download-btn"),
+  downloadSummaryBtn: qs<HTMLButtonElement>("#download-summary-btn"),
   progress: qs<HTMLProgressElement>("#progress"),
   gen: qs<HTMLSpanElement>("#gen-num"),
   workers: qs<HTMLSpanElement>("#worker-count"),
@@ -353,29 +354,82 @@ function reset(): void {
   els.status.textContent = "reset — press start";
 }
 
-function download(): void {
-  const data = {
-    generation: ga?.generation ?? 0,
-    config: DEFAULT_CONFIG,
-    workerCount,
-    history,
-    lastResult,
-    // Full cumulative matchup matrix — useful for offline post-hoc analysis
-    // (Elo, alternate Nash solvers, clustering etc.).
-    matchups: ga?.exportMatchups() ?? [],
-    exportedAt: new Date().toISOString(),
-  };
+function saveJson(data: unknown, suffix: string): void {
+  const gen = ga?.generation ?? 0;
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json",
   });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `sporefall-evo-gen${data.generation}.json`;
+  a.download = `sporefall-evo-gen${gen}-${suffix}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+function download(): void {
+  saveJson(
+    {
+      generation: ga?.generation ?? 0,
+      config: DEFAULT_CONFIG,
+      workerCount,
+      history,
+      lastResult,
+      // Full cumulative matchup matrix — useful for offline post-hoc analysis
+      // (Elo, alternate Nash solvers, clustering etc.).
+      matchups: ga?.exportMatchups() ?? [],
+      exportedAt: new Date().toISOString(),
+    },
+    "full",
+  );
+}
+
+function downloadSummary(): void {
+  const result = lastResult;
+  // HoF + tiers + top leaderboard + matrix, all with human-readable genome
+  // strings instead of full gene arrays. Target size: a few KB regardless of
+  // how long the run has gone.
+  const summary = {
+    generation: ga?.generation ?? 0,
+    exportedAt: new Date().toISOString(),
+    config: DEFAULT_CONFIG,
+    workerCount,
+    history, // tiny — one row per generation
+    hallOfFame: result
+      ? result.hallOfFame.map((g) => ({
+          id: g.id,
+          genome: describeGenotype(g),
+        }))
+      : [],
+    tiers: result
+      ? result.tiers.map((t) => ({
+          tier: t.tier,
+          id: t.genotype.id,
+          nashWeight: Number(t.nashWeight.toFixed(4)),
+          scoreVsNash: Number(t.scoreVsNash.toFixed(4)),
+          genome: describeGenotype(t.genotype),
+        }))
+      : [],
+    topLeaderboard: result
+      ? result.evaluated.slice(0, 5).map((e) => ({
+          id: e.genotype.id,
+          score: Number(e.score.toFixed(4)),
+          games: e.games,
+          genome: describeGenotype(e.genotype),
+        }))
+      : [],
+    matchupMatrix: result
+      ? {
+          ids: result.hallOfFame.map((g) => g.id),
+          rows: result.matchupMatrix.map((r) =>
+            r.map((v) => Number(v.toFixed(3))),
+          ),
+        }
+      : null,
+  };
+  saveJson(summary, "summary");
 }
 
 function updateButtons(): void {
@@ -388,6 +442,7 @@ els.startBtn.addEventListener("click", start);
 els.stopBtn.addEventListener("click", stop);
 els.resetBtn.addEventListener("click", reset);
 els.downloadBtn.addEventListener("click", download);
+els.downloadSummaryBtn.addEventListener("click", downloadSummary);
 
 window.addEventListener("beforeunload", () => {
   if (pool) pool.terminate();
