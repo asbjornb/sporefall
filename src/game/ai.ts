@@ -1,9 +1,20 @@
+import { GenotypeAgent } from "../evo/agent";
+import type { Gene, Genotype } from "../evo/genotype";
+import { canonicalId } from "../evo/genotype";
 import type { Command } from "./commands";
 import { STRUCTURES } from "./config";
 import { canBuild, canMutate } from "./sim";
 import type { ColonyState, GameState, Side, StructureKind } from "./types";
 
-export type AIDifficulty = "easy" | "hard";
+export type AIDifficulty = "easy" | "medium" | "hard";
+
+/** Internal mode for the rule-based AI — kept 2-valued so existing call sites
+ * (balance sim, determinism check) don't need to change. */
+export type SimpleAIMode = "easy" | "hard";
+
+export interface Agent {
+  update(state: GameState, dt: number): Command | null;
+}
 
 type Goal =
   | { kind: "build"; structure: StructureKind }
@@ -41,12 +52,12 @@ function chooseCounter(
   return "rhizomorph";
 }
 
-export class SimpleAI {
+export class SimpleAI implements Agent {
   private goal: Goal | null = null;
   private cooldown = 0;
   constructor(
     private readonly side: Side,
-    private readonly difficulty: AIDifficulty,
+    private readonly difficulty: SimpleAIMode,
     private readonly rng: () => number,
   ) {}
 
@@ -276,4 +287,134 @@ export class SimpleAI {
     }
     return bestIdx;
   }
+}
+
+// ---------- hard: evolved genotypes ----------
+
+// Helpers for terse gene literals (readability + one source of truth for the
+// short labels used in the evo UI).
+const b = (structure: StructureKind): Gene => ({ kind: "build", structure });
+const u = (target: StructureKind, ordinal: number): Gene => ({
+  kind: "upgrade",
+  target,
+  ordinal,
+});
+
+/**
+ * Tier-1 Nash-mixture genotypes from the evolutionary sim (gen 54, best=88.3%).
+ * Picking one at random per match keeps the Hard opponent from being
+ * memorizable: the player can't learn a single counter-opener.
+ */
+const HARD_GENOTYPES: { genes: Gene[]; weight: number }[] = [
+  // com3mq — hyphae swarm w/ rhizo anchors (Nash 0.51)
+  {
+    weight: 51,
+    genes: [
+      b("hyphae"),
+      b("hyphae"),
+      b("hyphae"),
+      b("hyphae"),
+      b("hyphae"),
+      b("rhizomorph"),
+      b("hyphae"),
+      b("hyphae"),
+      b("hyphae"),
+      b("rhizomorph"),
+      u("hyphae", 1),
+    ],
+  },
+  // 8nw0a9 — fruiting open into rhizo stack (Nash 0.49)
+  {
+    weight: 49,
+    genes: [
+      b("fruiting"),
+      b("hyphae"),
+      b("hyphae"),
+      b("decomposer"),
+      b("rhizomorph"),
+      b("rhizomorph"),
+      b("rhizomorph"),
+      b("rhizomorph"),
+      b("rhizomorph"),
+      b("rhizomorph"),
+      u("hyphae", 1),
+      u("rhizomorph", 2),
+      u("fruiting", 1),
+      u("hyphae", 1),
+      u("hyphae", 2),
+      u("hyphae", 1),
+      u("hyphae", 1),
+      u("hyphae", 1),
+      u("hyphae", 1),
+      u("rhizomorph", 2),
+      u("rhizomorph", 1),
+      u("hyphae", 2),
+      u("hyphae", 1),
+      u("rhizomorph", 3),
+      u("hyphae", 1),
+      u("hyphae", 1),
+    ],
+  },
+  // w2i3g0 — hyphae+fruiting mid-opener w/ deep hyphae upgrades (Nash 0.50)
+  {
+    weight: 50,
+    genes: [
+      b("hyphae"),
+      b("hyphae"),
+      b("fruiting"),
+      b("hyphae"),
+      b("hyphae"),
+      b("hyphae"),
+      b("hyphae"),
+      u("fruiting", 1),
+      b("hyphae"),
+      b("hyphae"),
+      u("hyphae", 2),
+      u("hyphae", 1),
+      u("hyphae", 1),
+      u("hyphae", 2),
+      u("hyphae", 1),
+      u("hyphae", 1),
+      u("hyphae", 2),
+      u("hyphae", 1),
+      u("hyphae", 1),
+      u("hyphae", 1),
+      u("hyphae", 2),
+      u("hyphae", 3),
+      u("hyphae", 1),
+      u("hyphae", 2),
+      u("hyphae", 1),
+      u("hyphae", 2),
+      u("hyphae", 1),
+      u("hyphae", 1),
+      u("hyphae", 1),
+    ],
+  },
+];
+
+function pickHardGenotype(rng: () => number): Genotype {
+  const total = HARD_GENOTYPES.reduce((a, g) => a + g.weight, 0);
+  let r = rng() * total;
+  for (const g of HARD_GENOTYPES) {
+    r -= g.weight;
+    if (r <= 0) return { id: canonicalId(g.genes), genes: g.genes };
+  }
+  const last = HARD_GENOTYPES[HARD_GENOTYPES.length - 1];
+  return { id: canonicalId(last.genes), genes: last.genes };
+}
+
+/**
+ * Build the right-side opponent for a given difficulty.
+ * - easy   → legacy random-goal `SimpleAI`.
+ * - medium → reactive rule-based `SimpleAI` (counters player composition).
+ * - hard   → `GenotypeAgent` sampled from the Tier-1 Nash mixture.
+ */
+export function createAI(
+  side: Side,
+  difficulty: AIDifficulty,
+  rng: () => number,
+): Agent {
+  if (difficulty === "easy") return new SimpleAI(side, "easy", rng);
+  if (difficulty === "medium") return new SimpleAI(side, "hard", rng);
+  return new GenotypeAgent(side, pickHardGenotype(rng));
 }

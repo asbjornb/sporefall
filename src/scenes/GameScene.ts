@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { SimpleAI, type AIDifficulty } from "../game/ai";
+import { createAI, type Agent, type AIDifficulty } from "../game/ai";
 import { type AudioManager, getAudio } from "../game/audio";
 import { type Command } from "../game/commands";
 import {
@@ -330,7 +330,7 @@ type Phase = "menu" | "playing";
 export class GameScene extends Phaser.Scene {
   private runner!: SimRunner;
   private state!: GameState;
-  private ai!: SimpleAI;
+  private ai!: Agent;
   private ourSide: Side = "left";
   private mp: MpSceneConfig | null = null;
   private mpListenerCleanup: (() => void) | null = null;
@@ -402,7 +402,7 @@ export class GameScene extends Phaser.Scene {
     label: Phaser.GameObjects.Text;
   };
   private difficultyBtnZone!: Phaser.GameObjects.Zone;
-  private difficulty: AIDifficulty = "hard";
+  private difficulty: AIDifficulty = "medium";
   private slotHit: Phaser.GameObjects.Arc[] = [];
   private selectedSlotIdx: number | null = null;
   /** Per-slot shake timer for the player's side, used to flash a denied tap on disabled. */
@@ -475,7 +475,7 @@ export class GameScene extends Phaser.Scene {
     this.state = this.runner.state;
     // The AI is constructed in every mode so tutorial-to-menu transitions can
     // still reset it; in MP we simply never tick it.
-    this.ai = new SimpleAI("right", this.difficulty, mulberry32(aiSeed()));
+    this.ai = createAI("right", this.difficulty, mulberry32(aiSeed()));
     this.layout = computeLayout(this.scale.width, this.scale.height);
     emitPhase(this.phase);
     if (this.mp) {
@@ -1917,15 +1917,24 @@ export class GameScene extends Phaser.Scene {
     const y = this.difficultyBtn.bg.getData("y") as number;
     const w = this.difficultyBtn.bg.getData("w") as number;
     const h = this.difficultyBtn.bg.getData("h") as number;
-    const fill = this.difficulty === "hard" ? 0x6a2a18 : 0x2a3a28;
+    const fill =
+      this.difficulty === "hard"
+        ? 0x6a2a18
+        : this.difficulty === "medium"
+          ? 0x6a4a18
+          : 0x2a3a28;
+    const label =
+      this.difficulty === "hard"
+        ? "AI: Hard"
+        : this.difficulty === "medium"
+          ? "AI: Medium"
+          : "AI: Easy";
     this.difficultyBtn.bg.clear();
     this.difficultyBtn.bg.fillStyle(fill, 0.95);
     this.difficultyBtn.bg.fillRoundedRect(x, y, w, h, 10);
     this.difficultyBtn.bg.lineStyle(2, 0xf5e8c8, 0.8);
     this.difficultyBtn.bg.strokeRoundedRect(x, y, w, h, 10);
-    this.difficultyBtn.label.setText(
-      this.difficulty === "hard" ? "AI: Hard" : "AI: Easy",
-    );
+    this.difficultyBtn.label.setText(label);
   }
 
   private updateTutorialHint(): void {
@@ -2398,11 +2407,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private cycleDifficulty(): void {
-    this.difficulty = this.difficulty === "easy" ? "hard" : "easy";
+    this.difficulty = nextDifficulty(this.difficulty);
     saveDifficulty(this.difficulty);
     // On the menu, just re-label the toggle — no match to restart yet.
     if (this.phase === "menu") {
-      this.ai = new SimpleAI("right", this.difficulty, mulberry32(aiSeed()));
+      this.ai = createAI("right", this.difficulty, mulberry32(aiSeed()));
       return;
     }
     this.restart();
@@ -2871,11 +2880,17 @@ const DIFFICULTY_STORAGE_KEY = "sporefall.difficulty";
 function loadDifficulty(): AIDifficulty {
   try {
     const v = window.localStorage?.getItem(DIFFICULTY_STORAGE_KEY);
-    if (v === "easy" || v === "hard") return v;
+    if (v === "easy" || v === "medium" || v === "hard") {
+      // Legacy "hard" was the rule-based reactive AI — that's now "medium".
+      // Remap so existing players keep the opponent they were used to and can
+      // opt into the new (stronger, evo-script) Hard explicitly.
+      if (v === "hard") return "medium";
+      return v;
+    }
   } catch {
     // ignore (e.g. SSR / privacy mode)
   }
-  return "hard";
+  return "medium";
 }
 
 function saveDifficulty(d: AIDifficulty): void {
@@ -2884,4 +2899,10 @@ function saveDifficulty(d: AIDifficulty): void {
   } catch {
     // ignore
   }
+}
+
+function nextDifficulty(d: AIDifficulty): AIDifficulty {
+  if (d === "easy") return "medium";
+  if (d === "medium") return "hard";
+  return "easy";
 }
