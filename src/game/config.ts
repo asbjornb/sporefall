@@ -60,10 +60,10 @@ export interface StructureConfig {
 export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   hyphae: {
     cost: 25,
-    buildTime: 5,
+    buildTime: 4,
     basePressure: 3,
     incomeBonus: 0,
-    disableDecay: 4,
+    disableDecay: 3,
     label: "Hyphal Mat",
     short: "Hyphae",
     color: 0x7a8a3a,
@@ -76,7 +76,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   },
   rhizomorph: {
     cost: 40,
-    buildTime: 5,
+    buildTime: 6,
     basePressure: 2,
     incomeBonus: 0,
     disableDecay: 5,
@@ -108,7 +108,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   },
   decomposer: {
     cost: 30,
-    buildTime: 10,
+    buildTime: 8,
     basePressure: 0,
     incomeBonus: 1,
     disableDecay: 4,
@@ -171,7 +171,7 @@ export function nextUpgradeTime(
 }
 
 /** Damage per second applied to an enemy sclerotium when the front is at it. */
-export const SCLEROTIUM_DAMAGE = 5;
+export const SCLEROTIUM_DAMAGE = 6;
 
 /** How fast the front moves in normalized-units/second per unit of net pressure. */
 export const FRONT_SPEED = 0.006;
@@ -191,7 +191,7 @@ export const SURGE_THRESHOLD = 100;
 /** Base surge charge rate at level 1, per second. */
 export const SURGE_CHARGE_RATE = 10;
 /** Per-target disable damage on burst, level 1. Burst is AoE — hits every active enemy (except decomposer). */
-export const SURGE_BURST_DAMAGE = 60;
+export const SURGE_BURST_DAMAGE = 70;
 /** Seconds the burst-fired visual state lasts (animation only, no gameplay effect). */
 export const SURGE_BURST_VISUAL_DURATION = 1.0;
 
@@ -206,7 +206,7 @@ export const SURGE_SLOW_MAX = 0.85;
  * The burst is both a disable AoE and a brief pressure spike — simulates
  * spore cloud shoving the front while it disables nearby enemies.
  */
-export const SURGE_BURST_PRESSURE_MULT = 5;
+export const SURGE_BURST_PRESSURE_MULT = 6;
 
 // ---------- Live-tunable balance ----------
 
