@@ -60,7 +60,7 @@ export interface StructureConfig {
 export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   hyphae: {
     cost: 25,
-    buildTime: 5,
+    buildTime: 4,
     basePressure: 3,
     incomeBonus: 0,
     disableDecay: 3,
@@ -76,7 +76,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   },
   rhizomorph: {
     cost: 40,
-    buildTime: 5,
+    buildTime: 6,
     basePressure: 2,
     incomeBonus: 0,
     disableDecay: 5,
