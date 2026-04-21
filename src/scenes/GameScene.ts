@@ -75,6 +75,12 @@ interface ControlBtnRect {
   y: number;
   size: number;
 }
+interface VolumeSliderRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 interface DifficultyBtnRect {
   x: number;
@@ -107,7 +113,9 @@ interface Layout {
   slotAreaBottom: number;
   buildBtns: BuildBtnRect[];
   pauseBtn: ControlBtnRect;
+  audioBtn: ControlBtnRect;
   restartBtn: ControlBtnRect;
+  volumeSlider: VolumeSliderRect;
   /** Tutorial "How to Play" button — lives inside the menu panel. */
   tutorialBtn: DifficultyBtnRect;
   /** AI difficulty toggle — lives inside the menu panel. */
@@ -239,6 +247,17 @@ function computeLayout(W: number, H: number): Layout {
     y: ctrlMargin,
     size: ctrlSize,
   };
+  const audioBtn: ControlBtnRect = {
+    x: pauseBtn.x - ctrlSize - ctrlGap,
+    y: ctrlMargin,
+    size: ctrlSize,
+  };
+  const volumeSlider: VolumeSliderRect = {
+    x: audioBtn.x,
+    y: audioBtn.y + audioBtn.size + s(10),
+    w: restartBtn.x + restartBtn.size - audioBtn.x,
+    h: Math.max(16, s(18)),
+  };
 
   // Pre-game modal: centered panel that houses the title, Spread CTA, and
   // the tutorial/difficulty controls. The game world dims behind it. Use
@@ -313,7 +332,9 @@ function computeLayout(W: number, H: number): Layout {
     slotAreaBottom,
     buildBtns,
     pauseBtn,
+    audioBtn,
     restartBtn,
+    volumeSlider,
     tutorialBtn,
     difficultyBtn,
     hpBarOffsetAboveLog,
@@ -375,6 +396,14 @@ export class GameScene extends Phaser.Scene {
     bg: Phaser.GameObjects.Graphics;
     icon: Phaser.GameObjects.Text;
   };
+  private audioBtn!: {
+    bg: Phaser.GameObjects.Graphics;
+    icon: Phaser.GameObjects.Text;
+  };
+  private volumeSlider!: {
+    bg: Phaser.GameObjects.Graphics;
+    knob: Phaser.GameObjects.Graphics;
+  };
   private restartBtn!: {
     bg: Phaser.GameObjects.Graphics;
     icon: Phaser.GameObjects.Text;
@@ -412,7 +441,9 @@ export class GameScene extends Phaser.Scene {
   private upgradeBtnZone!: Phaser.GameObjects.Zone;
   private buildBtnZones: Phaser.GameObjects.Zone[] = [];
   private pauseBtnZone!: Phaser.GameObjects.Zone;
+  private audioBtnZone!: Phaser.GameObjects.Zone;
   private restartBtnZone!: Phaser.GameObjects.Zone;
+  private volumeSliderZone!: Phaser.GameObjects.Zone;
   private bgZone!: Phaser.GameObjects.Zone;
   private layout!: Layout;
   private audio!: AudioManager;
@@ -586,6 +617,7 @@ export class GameScene extends Phaser.Scene {
     if (this.phase === "playing") {
       this.audio.resume();
       this.audio.startAmbient();
+      this.audio.startMusic();
     }
   }
 
@@ -667,6 +699,14 @@ export class GameScene extends Phaser.Scene {
       .setPosition(pb.x + pb.size / 2, pb.y + pb.size / 2)
       .setSize(pb.size, pb.size);
 
+    const ab = L.audioBtn;
+    this.audioBtn.bg.setData("x", ab.x).setData("y", ab.y).setData("size", ab.size);
+    this.audioBtn.icon.setPosition(ab.x + ab.size / 2, ab.y + ab.size / 2);
+    this.audioBtn.icon.setFontSize(px(27));
+    this.audioBtnZone
+      .setPosition(ab.x + ab.size / 2, ab.y + ab.size / 2)
+      .setSize(ab.size, ab.size);
+
     const rb = L.restartBtn;
     this.restartBtn.bg.setData("x", rb.x).setData("y", rb.y).setData("size", rb.size);
     this.restartBtn.icon.setPosition(rb.x + rb.size / 2, rb.y + rb.size / 2);
@@ -674,6 +714,17 @@ export class GameScene extends Phaser.Scene {
     this.restartBtnZone
       .setPosition(rb.x + rb.size / 2, rb.y + rb.size / 2)
       .setSize(rb.size, rb.size);
+
+    const vs = L.volumeSlider;
+    this.volumeSlider.bg
+      .setData("x", vs.x)
+      .setData("y", vs.y)
+      .setData("w", vs.w)
+      .setData("h", vs.h);
+    this.volumeSlider.knob.setData("r", Math.max(8, Math.round(vs.h * 0.62)));
+    this.volumeSliderZone
+      .setPosition(vs.x + vs.w / 2, vs.y + vs.h / 2)
+      .setSize(vs.w, Math.max(vs.h * 2.2, 36));
 
     const tb = L.tutorialBtn;
     this.tutorialBtn.bg
@@ -825,6 +876,7 @@ export class GameScene extends Phaser.Scene {
       }
       // The match is over — let the ambient bed breathe out.
       this.audio.stopAmbient();
+      this.audio.stopMusic();
     }
     this.prevWinner = this.state.winner;
   }
@@ -1762,6 +1814,46 @@ export class GameScene extends Phaser.Scene {
     this.pauseBtn = { bg: pauseBg, icon: pauseIcon };
     this.pauseBtnZone = pauseZone;
 
+    const audioBg = this.add.graphics().setDepth(15);
+    const audioIcon = this.add
+      .text(0, 0, "", {
+        fontSize: "27px",
+        color: "#f8ecc8",
+        fontStyle: "bold",
+        fontFamily: "system-ui, sans-serif",
+      })
+      .setOrigin(0.5)
+      .setDepth(16);
+    const audioZone = this.add
+      .zone(0, 0, 10, 10)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(16);
+    audioZone.on("pointerdown", (_p: unknown, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation?.();
+      this.audio.resume();
+      this.audio.toggleMuted();
+    });
+    this.audioBtn = { bg: audioBg, icon: audioIcon };
+    this.audioBtnZone = audioZone;
+
+    const sliderBg = this.add.graphics().setDepth(15);
+    const sliderKnob = this.add.graphics().setDepth(16);
+    const sliderZone = this.add
+      .zone(0, 0, 10, 10)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(16);
+    sliderZone.on("pointerdown", (p: Phaser.Input.Pointer, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation?.();
+      this.audio.resume();
+      this.setVolumeFromPointer(p.x);
+    });
+    sliderZone.on("pointermove", (p: Phaser.Input.Pointer) => {
+      if (!p.isDown) return;
+      this.setVolumeFromPointer(p.x);
+    });
+    this.volumeSlider = { bg: sliderBg, knob: sliderKnob };
+    this.volumeSliderZone = sliderZone;
+
     const restartBg = this.add.graphics().setDepth(15);
     const restartIcon = this.add
       .text(0, 0, "\u21BB", {
@@ -1838,11 +1930,26 @@ export class GameScene extends Phaser.Scene {
     const inMenu = this.phase === "menu";
     // Pause & Restart belong to the active match — keep them out of the menu.
     this.setBtnVisible(this.pauseBtn, this.pauseBtnZone, !inMenu);
+    this.setBtnVisible(this.audioBtn, this.audioBtnZone, !inMenu);
     this.setBtnVisible(this.restartBtn, this.restartBtnZone, !inMenu);
+    this.volumeSlider.bg.setVisible(!inMenu);
+    this.volumeSlider.knob.setVisible(!inMenu);
+    if (!inMenu) {
+      if (!this.volumeSliderZone.input?.enabled) {
+        this.volumeSliderZone.setInteractive({ useHandCursor: true });
+      }
+    } else {
+      this.volumeSlider.bg.clear();
+      this.volumeSlider.knob.clear();
+      if (this.volumeSliderZone.input?.enabled) this.volumeSliderZone.disableInteractive();
+    }
     if (!inMenu) {
       this.drawControlButton(this.pauseBtn, this.paused ? 0x3a5a28 : 0x3a2a18);
       this.pauseBtn.icon.setText(this.paused ? "\u25B6" : "\u23F8");
+      this.drawControlButton(this.audioBtn, this.audio.isMuted() ? 0x6a2a18 : 0x3a2a18);
+      this.audioBtn.icon.setText(this.audio.isMuted() ? "\uD83D\uDD07" : "\uD83D\uDD0A");
       this.drawControlButton(this.restartBtn, 0x3a2a18);
+      this.drawVolumeSlider();
       // In MP a unilateral restart would desync, so the same button leaves
       // the match instead. Swap the glyph so the affordance is obvious.
       this.restartBtn.icon.setText(this.mp ? "\u2715" : "\u21BB");
@@ -1953,6 +2060,41 @@ export class GameScene extends Phaser.Scene {
     btn.bg.strokeRoundedRect(x, y, size, size, 10);
   }
 
+  private drawVolumeSlider(): void {
+    const x = this.volumeSlider.bg.getData("x") as number;
+    const y = this.volumeSlider.bg.getData("y") as number;
+    const w = this.volumeSlider.bg.getData("w") as number;
+    const h = this.volumeSlider.bg.getData("h") as number;
+    const knobR = this.volumeSlider.knob.getData("r") as number;
+    const t = this.audio.isMuted() ? 0 : this.audio.getVolume();
+    const knobX = x + Math.round(w * t);
+    const knobY = y + h / 2;
+
+    this.volumeSlider.bg.clear();
+    this.volumeSlider.bg.fillStyle(0x3a2a18, 0.9);
+    this.volumeSlider.bg.fillRoundedRect(x, y, w, h, h / 2);
+    this.volumeSlider.bg.fillStyle(0x8fb05c, 0.9);
+    this.volumeSlider.bg.fillRoundedRect(x, y, Math.max(2, knobX - x), h, h / 2);
+    this.volumeSlider.bg.lineStyle(2, 0xf5e8c8, 0.8);
+    this.volumeSlider.bg.strokeRoundedRect(x, y, w, h, h / 2);
+
+    this.volumeSlider.knob.clear();
+    this.volumeSlider.knob.fillStyle(0xf5e8c8, 1);
+    this.volumeSlider.knob.fillCircle(knobX, knobY, knobR);
+    this.volumeSlider.knob.lineStyle(2, 0x1b120a, 0.85);
+    this.volumeSlider.knob.strokeCircle(knobX, knobY, knobR);
+  }
+
+  private setVolumeFromPointer(pointerX: number): void {
+    const x = this.volumeSlider.bg.getData("x") as number;
+    const w = this.volumeSlider.bg.getData("w") as number;
+    const t = Phaser.Math.Clamp((pointerX - x) / Math.max(1, w), 0, 1);
+    this.audio.setVolume(t);
+    if (t > 0 && this.audio.isMuted()) {
+      this.audio.setMuted(false);
+    }
+  }
+
   // ---------- UI: pre-game menu ----------
 
   private createMenuOverlay(): void {
@@ -2042,6 +2184,7 @@ export class GameScene extends Phaser.Scene {
     emitPhase(this.phase);
     this.audio.resume();
     this.audio.startAmbient();
+    this.audio.startMusic();
   }
 
   // ---------- UI: tutorial summary overlay (toggled via the "?" button) ----------
