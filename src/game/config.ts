@@ -59,11 +59,11 @@ export interface StructureConfig {
  */
 export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   hyphae: {
-    cost: 25,
+    cost: 20,
     buildTime: 4,
-    basePressure: 3,
+    basePressure: 2,
     incomeBonus: 0,
-    disableDecay: 3,
+    disableDecay: 4,
     label: "Hyphal Mat",
     short: "Hyphae",
     color: 0x7a8a3a,
@@ -92,8 +92,8 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   },
   fruiting: {
     cost: 60,
-    buildTime: 10,
-    basePressure: 5,
+    buildTime: 8,
+    basePressure: 4,
     incomeBonus: 0,
     disableDecay: 4,
     label: "Fruiting Cluster",
@@ -108,7 +108,7 @@ export const STRUCTURES: Record<StructureKind, StructureConfig> = {
   },
   decomposer: {
     cost: 30,
-    buildTime: 8,
+    buildTime: 10,
     basePressure: 0,
     incomeBonus: 1,
     disableDecay: 4,
