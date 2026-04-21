@@ -491,11 +491,15 @@ export class GameScene extends Phaser.Scene {
     this.bg = this.add.graphics();
     this.fx = this.add.graphics();
 
-    this.topText = this.add.text(24, 14, "", {
-      fontSize: "26px",
-      color: "#e8d7b6",
-      fontFamily: "system-ui, sans-serif",
-    });
+    this.topText = this.add
+      .text(0, 14, "", {
+        fontSize: "26px",
+        color: "#e8d7b6",
+        fontFamily: "system-ui, sans-serif",
+        align: "center",
+        lineSpacing: 2,
+      })
+      .setOrigin(0.5, 0);
 
     this.winText = this.add
       .text(0, 0, "", {
@@ -620,10 +624,10 @@ export class GameScene extends Phaser.Scene {
       `${Math.max(Math.round(cssPx * dpr), scaled)}px`;
 
     this.topText.setPosition(
-      Math.max(16, Math.round(24 * sc)),
-      Math.max(14, Math.round(14 * sc)),
+      L.W / 2,
+      Math.max(10, Math.round(10 * sc)),
     );
-    this.topText.setFontSize(px(26));
+    this.topText.setFontSize(readablePx(14, Math.round(22 * sc)));
 
     this.winText.setPosition(L.W / 2, L.H / 2);
     this.winText.setFontSize(px(76));
@@ -1617,10 +1621,14 @@ export class GameScene extends Phaser.Scene {
     const them = this.state[enemy];
     const myP = pressureOf(this.state, this.ourSide).toFixed(1);
     const theirP = pressureOf(this.state, enemy).toFixed(1);
+    // Icon-based, centered HUD so it doesn't butt up against the top-left
+    // (vs Friend) or top-right (pause/restart) controls. 🍂 nutrients,
+    // 💥 pressure, ❤ HP — all BMP / emoji codepoints that fall back to the
+    // system emoji font via the canvas text stack.
     this.topText.setText(
       [
-        `YOU   nutrients ${Math.floor(me.nutrients)}   +${me.income.toFixed(1)}/s   pressure ${myP}   HP ${Math.ceil(me.hp)}`,
-        `ENEMY nutrients ${Math.floor(them.nutrients)}   +${them.income.toFixed(1)}/s   pressure ${theirP}   HP ${Math.ceil(them.hp)}`,
+        `YOU    🍂 ${Math.floor(me.nutrients)} (+${me.income.toFixed(1)}/s)    💥 ${myP}    ❤ ${Math.ceil(me.hp)}`,
+        `ENEMY  🍂 ${Math.floor(them.nutrients)} (+${them.income.toFixed(1)}/s)    💥 ${theirP}    ❤ ${Math.ceil(them.hp)}`,
       ].join("\n"),
     );
   }
@@ -1717,11 +1725,11 @@ export class GameScene extends Phaser.Scene {
 
       const info =
         kind === "decomposer"
-          ? `+${cfg.incomeBonus}/s income`
-          : `${cfg.basePressure} pressure`;
+          ? `+🍂 ${cfg.incomeBonus}/s`
+          : `💥 ${cfg.basePressure}`;
       title.setText(cfg.label);
       title.setColor(can ? "#f8ecc8" : "#9a8a70");
-      detail.setText(`${cfg.cost}n · ${cfg.buildTime}s\n${info}`);
+      detail.setText(`🍂 ${cfg.cost} · ${cfg.buildTime}s\n${info}`);
       detail.setColor(can ? "#f0e2bc" : "#8a7a60");
     }
   }
@@ -2320,14 +2328,14 @@ export class GameScene extends Phaser.Scene {
       fillColor = 0x241a10;
     } else if (can) {
       const need = nextUpgradeCost(s.kind, s.level) ?? 0;
-      text = `Upgrade → Lv${s.level + 1}\n${need}n`;
+      text = `Upgrade → Lv${s.level + 1}\n🍂 ${need}`;
       textColor = "#f5e8c8";
       borderColor = cfg.color;
       fillColor = 0x3a2a18;
     } else {
       const need = nextUpgradeCost(s.kind, s.level) ?? 0;
       const have = Math.floor(this.state[this.ourSide].nutrients);
-      text = `Upgrade → Lv${s.level + 1}\n${have}/${need}n`;
+      text = `Upgrade → Lv${s.level + 1}\n🍂 ${have}/${need}`;
       textColor = "#8a7a60";
       borderColor = 0x4a3420;
       fillColor = 0x241a10;
