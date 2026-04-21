@@ -1721,11 +1721,11 @@ export class GameScene extends Phaser.Scene {
 
       const info =
         kind === "decomposer"
-          ? `+${cfg.incomeBonus}/s income`
-          : `${cfg.basePressure} pressure`;
+          ? `+🍂 ${cfg.incomeBonus}/s`
+          : `💥 ${cfg.basePressure}`;
       title.setText(cfg.label);
       title.setColor(can ? "#f8ecc8" : "#9a8a70");
-      detail.setText(`${cfg.cost}n · ${cfg.buildTime}s\n${info}`);
+      detail.setText(`🍂 ${cfg.cost} · ${cfg.buildTime}s\n${info}`);
       detail.setColor(can ? "#f0e2bc" : "#8a7a60");
     }
   }
@@ -2324,14 +2324,14 @@ export class GameScene extends Phaser.Scene {
       fillColor = 0x241a10;
     } else if (can) {
       const need = nextUpgradeCost(s.kind, s.level) ?? 0;
-      text = `Upgrade → Lv${s.level + 1}\n${need}n`;
+      text = `Upgrade → Lv${s.level + 1}\n🍂 ${need}`;
       textColor = "#f5e8c8";
       borderColor = cfg.color;
       fillColor = 0x3a2a18;
     } else {
       const need = nextUpgradeCost(s.kind, s.level) ?? 0;
       const have = Math.floor(this.state[this.ourSide].nutrients);
-      text = `Upgrade → Lv${s.level + 1}\n${have}/${need}n`;
+      text = `Upgrade → Lv${s.level + 1}\n🍂 ${have}/${need}`;
       textColor = "#8a7a60";
       borderColor = 0x4a3420;
       fillColor = 0x241a10;
