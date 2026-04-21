@@ -741,6 +741,10 @@ export class GameScene extends Phaser.Scene {
         }
       });
       if (this.mp) this.updateMultiplayer();
+      if (this.tutorial.active && this.tutorial.finished) {
+        this.backToMenu();
+        return;
+      }
     } else if (this.phase === "menu") {
       // Keep a ticking clock so the menu's subtle pulse has something to ride on,
       // but never advance the match clock (countdown, front, pressure stay still).

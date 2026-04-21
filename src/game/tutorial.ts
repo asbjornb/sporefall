@@ -47,7 +47,7 @@ const STEPS: TutorialStep[] = [
   {
     id: "build",
     hint:
-      "BUILD  Tap the Hyphal Mat button on the left\nto grow your first structure (20 nutrients).",
+      "BUILD  Tap the Hyphal Mat button on the left\nto grow your first structure (25 nutrients).",
     isComplete: hasAnyPlayerStructure,
   },
   {
@@ -101,7 +101,8 @@ const STEPS: TutorialStep[] = [
   {
     id: "done",
     hint:
-      "SUMMARY\n\u2022 Build structures to push the front\n\u2022 Only one construction at a time\n\u2022 Upgrade pauses pressure\n\u2022 Don't get overrun\n\nTap the restart button (top-right) for a real match.",
+      "SUMMARY\n\u2022 Build structures to push the front\n\u2022 Only one construction at a time\n\u2022 Upgrade pauses pressure\n\u2022 Don't get overrun\n\nTap anywhere to return to the menu.",
+    isComplete: (_s, c) => c.timeInStep > MIN_READ_TIME && c.tapped,
   },
 ];
 
