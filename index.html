@@ -26,10 +26,16 @@
         width: 100vw;
         height: 100vh;
       }
-      #fullscreen-btn {
+      #top-left-controls {
         position: fixed;
         top: 8px;
-        right: 8px;
+        left: 8px;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        z-index: 20;
+      }
+      #fullscreen-btn {
         width: 36px;
         height: 36px;
         display: none;
@@ -43,7 +49,6 @@
         line-height: 1;
         cursor: pointer;
         padding: 0;
-        z-index: 20;
       }
       #fullscreen-btn.visible {
         display: flex;
@@ -52,9 +57,6 @@
         background: rgba(27, 18, 10, 0.8);
       }
       #mute-btn {
-        position: fixed;
-        top: 8px;
-        right: 52px;
         width: 36px;
         height: 36px;
         display: flex;
@@ -68,15 +70,11 @@
         line-height: 1;
         cursor: pointer;
         padding: 0;
-        z-index: 20;
       }
       #mute-btn:hover {
         background: rgba(27, 18, 10, 0.8);
       }
       #mp-btn {
-        position: fixed;
-        top: 8px;
-        left: 8px;
         display: none;
         align-items: center;
         justify-content: center;
@@ -88,7 +86,6 @@
         font-family: inherit;
         padding: 6px 10px;
         cursor: pointer;
-        z-index: 20;
       }
       #mp-btn.visible {
         display: flex;
@@ -266,9 +263,11 @@
   </head>
   <body>
     <div id="game"></div>
-    <button id="mute-btn" type="button" aria-label="Toggle sound" title="Toggle sound">🔊</button>
-    <button id="fullscreen-btn" type="button" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
-    <button id="mp-btn" type="button" aria-label="Multiplayer">vs Friend</button>
+    <div id="top-left-controls">
+      <button id="mp-btn" type="button" aria-label="Multiplayer">vs Friend</button>
+      <button id="mute-btn" type="button" aria-label="Toggle sound" title="Toggle sound">🔊</button>
+      <button id="fullscreen-btn" type="button" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button>
+    </div>
     <button id="spread-btn" type="button">Spread</button>
     <div id="mobile-hint">Plays best fullscreen in landscape.</div>
     <div id="mp-overlay" role="dialog" aria-label="Multiplayer">
