@@ -184,7 +184,7 @@ export const DISABLE_THRESHOLD = 100;
 export const DISABLE_DURATION = 6;
 
 /** Rhizomorph dissolve rate (disable damage / second) at level 1. Applies to any target. */
-export const RHIZO_DISSOLVE_RATE = 11;
+export const RHIZO_DISSOLVE_RATE = 10;
 
 /** Fruiting surge meter threshold. */
 export const SURGE_THRESHOLD = 100;
